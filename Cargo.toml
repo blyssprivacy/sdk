@@ -14,3 +14,8 @@ criterion = "0.3"
 [[bench]]
 name = "ntt"
 harness = false
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+panic = "abort"
