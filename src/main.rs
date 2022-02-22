@@ -1,11 +1,6 @@
-mod arith;
-mod ntt;
-mod number_theory;
-mod params;
-mod poly;
-
-use crate::params::*;
-use crate::poly::*;
+use spiral_rs::poly::*;
+use spiral_rs::params::*;
+use spiral_rs::*;
 
 fn main() {
     println!("Hello, world!");

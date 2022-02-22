@@ -7,3 +7,10 @@ edition = "2021"
 
 [dependencies]
 rand = "0.8.5"
+
+[dev-dependencies]
+criterion = "0.3"
+
+[[bench]]
+name = "ntt"
+harness = false

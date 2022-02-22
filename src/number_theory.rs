@@ -14,7 +14,7 @@ pub fn is_primitive_root(root: u64, degree: u64, modulus: u64) -> bool {
 pub fn get_primitive_root(degree: u64, modulus: u64) -> Option<u64> {
     assert!(modulus > 1);
     assert!(degree >= 2);
-    let size_entire_group = degree - 1;
+    let size_entire_group = modulus - 1;
     let size_quotient_group = size_entire_group / degree;
     if size_entire_group - size_quotient_group * degree != 0 {
         return None;
@@ -30,7 +30,7 @@ pub fn get_primitive_root(degree: u64, modulus: u64) -> Option<u64> {
         if is_primitive_root(root, degree, modulus) {
             break;
         }
-        if trial != ATTEMPT_MAX - 1 {
+        if trial == ATTEMPT_MAX - 1 {
             return None;
         }
     }
@@ -51,7 +51,7 @@ pub fn get_minimal_primitive_root(degree: u64, modulus: u64) -> Option<u64> {
         current_generator = multiply_uint_mod(current_generator, generator_sq, modulus);
     }
 
-    Some(current_generator)
+    Some(root)
 }
 
 pub fn extended_gcd(mut x: u64, mut y: u64) -> (u64, i64, i64) {
@@ -89,7 +89,7 @@ pub fn invert_uint_mod(value: u64, modulus: u64) -> Option<u64> {
     if gcd_tuple.0 != 1 {
         return None;
     } else if gcd_tuple.1 < 0 {
-        return Some(gcd_tuple.1 as u64 + modulus);
+        return Some((gcd_tuple.1 as u64).overflowing_add(modulus).0);
     } else {
         return Some(gcd_tuple.1 as u64);
     }

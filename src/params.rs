@@ -18,6 +18,12 @@ impl Params {
     pub fn get_ntt_forward_prime_table(&self, i: usize) -> &[u64] {
         self.ntt_tables[i][1].as_slice()
     }
+    pub fn get_ntt_inverse_table(&self, i: usize) -> &[u64] {
+        self.ntt_tables[i][2].as_slice()
+    }
+    pub fn get_ntt_inverse_prime_table(&self, i: usize) -> &[u64] {
+        self.ntt_tables[i][3].as_slice()
+    }
 
     pub fn init(poly_len: usize, moduli: Vec<u64>) -> Self {
         let poly_len_log2 = log2(poly_len as u64) as usize;

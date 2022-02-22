@@ -31,11 +31,11 @@ pub fn exponentiate_uint_mod(operand: u64, mut exponent: u64, modulus: u64) -> u
     }
 
     let mut power = operand;
-    let mut product = 0u64;
-    let mut intermediate = 0u64;
+    let mut product;
+    let mut intermediate = 1u64;
 
     loop {
-        if (exponent & 1) == 1 {
+        if (exponent % 2) == 1 {
             product = multiply_uint_mod(power, intermediate, modulus);
             mem::swap(&mut product, &mut intermediate);
         }
@@ -47,4 +47,36 @@ pub fn exponentiate_uint_mod(operand: u64, mut exponent: u64, modulus: u64) -> u
         mem::swap(&mut product, &mut power);
     }
     intermediate
+}
+
+pub fn reverse_bits(x: u64, bit_count: usize) -> u64 {
+    if bit_count == 0 {
+        return 0;
+    }
+
+    let r = x.reverse_bits();
+    r >> (mem::size_of::<u64>() * 8 - bit_count)
+}
+
+pub fn div2_uint_mod(operand: u64, modulus: u64) -> u64 {
+    if operand & 1 == 1 {
+        let res = operand.overflowing_add(modulus);
+        if res.1 {
+            return (res.0 >> 1) | (1u64 << 63);
+        } else {
+            return res.0 >> 1;
+        }
+    } else {
+        return operand >> 1;
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+
+    #[test]
+    fn div2_uint_mod_correct() {
+        assert_eq!(div2_uint_mod(3, 7), 5);
+    }
 }
