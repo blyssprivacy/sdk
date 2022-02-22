@@ -141,7 +141,7 @@ mod test {
     use super::*;
 
     fn get_params() -> Params {
-        Params::init(2048, vec![7, 31])
+        Params::init(2048, vec![268369921u64, 249561089u64])
     }
 
     fn assert_all_zero(a: &[u64]) {

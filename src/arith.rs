@@ -17,10 +17,6 @@ pub fn multiply_add_modular(params: &Params, a: u64, b: u64, x: u64, c: usize) -
     (a * b + x) % params.moduli[c]
 }
 
-fn swap(a: u64, b: u64) -> (u64, u64) {
-    (b, a)
-}
-
 pub fn exponentiate_uint_mod(operand: u64, mut exponent: u64, modulus: u64) -> u64 {
     if exponent == 0 {
         return 1;
