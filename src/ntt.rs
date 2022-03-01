@@ -389,6 +389,17 @@ mod test {
     }
 
     #[test]
+    fn ntt_inverse_correct() {
+        let params = get_params();
+        let mut v1 = vec![100; 2*2048];
+        ntt_inverse(&params, v1.as_mut_slice());
+        assert_eq!(v1[0], 100);
+        assert_eq!(v1[2048], 100);
+        assert_eq!(v1[50], 0);
+        assert_eq!(v1[2048 + 50], 0);
+    }
+
+    #[test]
     fn ntt_correct() {
         let params = get_params();
         let mut v1 = vec![0; params.crt_count * params.poly_len];
