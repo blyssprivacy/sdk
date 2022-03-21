@@ -351,7 +351,7 @@ mod test {
     use crate::util::*;
 
     fn get_params() -> Params {
-        Params::init(2048, vec![268369921u64, 249561089u64])
+        Params::init(2048, &vec![268369921u64, 249561089u64])
     }
 
     const REF_VAL: u64 = 519370102;

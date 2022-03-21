@@ -4,7 +4,7 @@ use spiral_rs::*;
 
 fn main() {
     println!("Hello, world!");
-    let params = Params::init(2048, vec![7, 31]);
+    let params = Params::init(2048, &vec![7, 31]);
     let m1 = poly::PolyMatrixNTT::zero(&params, 2, 1);
     println!("{}", m1.is_ntt());
     let m2 = poly::PolyMatrixNTT::zero(&params, 3, 2);

@@ -6,6 +6,7 @@ pub struct Params {
     pub ntt_tables: Vec<Vec<Vec<u64>>>,
     pub crt_count: usize,
     pub moduli: Vec<u64>,
+    pub modulus: u64
 }
 
 impl Params {
@@ -25,16 +26,21 @@ impl Params {
         self.ntt_tables[i][3].as_slice()
     }
 
-    pub fn init(poly_len: usize, moduli: Vec<u64>) -> Self {
+    pub fn init(poly_len: usize, moduli: &Vec<u64>) -> Self {
         let poly_len_log2 = log2(poly_len as u64) as usize;
         let crt_count = moduli.len();
         let ntt_tables = build_ntt_tables(poly_len, moduli.as_slice());
+        let mut modulus = 1;
+        for m in moduli {
+            modulus *= m;
+        }
         Self {
             poly_len,
             poly_len_log2,
             ntt_tables,
             crt_count,
-            moduli,
+            moduli: moduli.clone(),
+            modulus
         }
     }
 }

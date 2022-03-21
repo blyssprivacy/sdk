@@ -5,7 +5,7 @@ use rand::Rng;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn criterion_benchmark(c: &mut Criterion) {
-    let params = Params::init(2048, vec![268369921u64, 249561089u64]);
+    let params = Params::init(2048, &vec![268369921u64, 249561089u64]);
     let mut v1 = vec![0; params.crt_count * params.poly_len];
     let mut rng = rand::thread_rng();
     for i in 0..params.crt_count {
