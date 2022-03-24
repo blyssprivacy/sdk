@@ -21,6 +21,8 @@ pub struct Params {
     pub t_gsw: usize,
 
     pub expand_queries: bool,
+    pub db_dim_1: usize,
+    pub db_dim_2: usize,
 }
 
 impl Params {
@@ -70,6 +72,8 @@ impl Params {
         t_exp_right: usize,
         t_gsw: usize,
         expand_queries: bool,
+        db_dim_1: usize,
+        db_dim_2: usize,
     ) -> Self {
         let poly_len_log2 = log2(poly_len as u64) as usize;
         let crt_count = moduli.len();
@@ -96,6 +100,8 @@ impl Params {
             t_exp_right,
             t_gsw,
             expand_queries,
+            db_dim_1,
+            db_dim_2,
         }
     }
 }

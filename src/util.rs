@@ -20,6 +20,8 @@ pub fn get_test_params() -> Params {
         56,
         56,
         56,
-        true
+        true,
+        9,
+        6,
     )
 }

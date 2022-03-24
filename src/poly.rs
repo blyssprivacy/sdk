@@ -239,6 +239,20 @@ pub fn invert_poly(params: &Params, res: &mut [u64], a: &[u64]) {
     }
 }
 
+pub fn automorph_poly(params: &Params, res: &mut [u64], a: &[u64], t: usize) {
+    let poly_len = params.poly_len;
+    for i in 0..poly_len {
+        let num = (i * t) / poly_len;
+        let rem = (i * t) % poly_len;
+
+        if num % 2 == 0 {
+            res[rem] = a[i];
+        } else {
+            res[rem] = params.modulus - a[i];
+        }
+    }
+}
+
 pub fn multiply_add_poly_avx(params: &Params, res: &mut [u64], a: &[u64], b: &[u64]) {
     for c in 0..params.crt_count {
         for i in (0..params.poly_len).step_by(4) {
@@ -341,6 +355,26 @@ pub fn invert(res: &mut PolyMatrixRaw, a: &PolyMatrixRaw) {
     }
 }
 
+pub fn automorph<'a>(res: &mut PolyMatrixRaw<'a>, a: &PolyMatrixRaw<'a>, t: usize) {
+    assert!(res.rows == a.rows);
+    assert!(res.cols == a.cols);
+
+    let params = res.params;
+    for i in 0..a.rows {
+        for j in 0..a.cols {
+            let res_poly = res.get_poly_mut(i, j);
+            let pol1 = a.get_poly(i, j);
+            automorph_poly(params, res_poly, pol1, t);
+        }
+    }
+}
+
+pub fn automorph_alloc<'a>(a: &PolyMatrixRaw<'a>, t: usize) -> PolyMatrixRaw<'a> {
+    let mut res = PolyMatrixRaw::zero(a.params, a.rows, a.cols);
+    automorph(&mut res, a, t);
+    res
+}
+
 pub fn stack<'a>(a: &PolyMatrixRaw<'a>, b: &PolyMatrixRaw<'a>) -> PolyMatrixRaw<'a> {
     assert_eq!(a.cols, b.cols);
     let mut c = PolyMatrixRaw::zero(a.params, a.rows + b.rows, a.cols);
@@ -367,6 +401,12 @@ pub fn scalar_multiply(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatri
 pub fn scalar_multiply_alloc<'a>(a: &PolyMatrixNTT<'a>, b: &PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
     let mut res = PolyMatrixNTT::zero(b.params, b.rows, b.cols);
     scalar_multiply(&mut res, a, b);
+    res
+}
+
+pub fn single_poly<'a>(params: &'a Params, val: u64) -> PolyMatrixRaw<'a> {
+    let mut res = PolyMatrixRaw::zero(params, 1, 1);
+    res.get_poly_mut(0, 0)[0] = val;
     res
 }
 

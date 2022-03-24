@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{poly::*, params::*, discrete_gaussian::*, gadget::*};
+use crate::{poly::*, params::*, discrete_gaussian::*, gadget::*, arith::*};
 
 pub struct PublicParameters<'a> {
     v_packing: Vec<PolyMatrixNTT<'a>>,            // Ws
@@ -69,11 +69,59 @@ impl<'a> Client<'a> {
         p
     }
 
-    fn encrypt_matrix_gsw(&mut self, ag: PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
+    fn get_regev_sample(&mut self) -> PolyMatrixNTT<'a> {
         let params = self.params;
+        let a = PolyMatrixRaw::random(params, 1, 1);
+        let e = PolyMatrixRaw::noise(params, 1, 1, &mut self.dg);
+        let b_p = &self.sk_reg.ntt() * &a.ntt();
+        let b = &e.ntt() + &b_p;
+        let mut p = PolyMatrixNTT::zero(params, 2, 1);
+        p.copy_into(&(-&a).ntt(), 0, 0);
+        p.copy_into(&b, 1, 0);
+        p
+    }
+
+    fn get_fresh_reg_public_key(&mut self, m: usize) -> PolyMatrixNTT<'a> {
+        let params = self.params;
+
+        let mut p = PolyMatrixNTT::zero(params, 2, m);
+
+        for i in 0..m {
+            p.copy_into(&self.get_regev_sample(), 0, i);
+        }
+
+        p
+    }
+
+    fn encrypt_matrix_gsw(&mut self, ag: PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
         let mx = ag.cols;
         let p = self.get_fresh_gsw_public_key(mx);
         let res = &(p.ntt()) + &(ag.pad_top(1));
+        res
+    }
+    
+    fn encrypt_matrix_reg(&mut self, a: PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
+        let m = a.cols;
+        let p = self.get_fresh_reg_public_key(m);
+        &p + &a.pad_top(1)
+    }
+
+    fn generate_expansion_params(&mut self, num_exp: usize, m_exp: usize) -> Vec<PolyMatrixNTT<'a>> {
+        // MatPoly G_exp = buildGadget(1, m_exp);
+        // MatPoly G_exp_nttd = to_ntt(G_exp);
+        let params = self.params;
+        let g_exp = build_gadget(params, 1, m_exp);
+        let g_exp_ntt = g_exp.ntt();
+        let mut res = Vec::new();
+
+        for i in 0..num_exp {
+            let t = (params.poly_len / (1 << i)) + 1;
+            let tau_sk_reg = automorph_alloc(&self.sk_reg, t);
+            // MatPoly W_exp_i = encryptSimpleRegevMatrix(s0, multiply(tau_s0, G_exp_nttd));
+            let prod = &tau_sk_reg.ntt() * &g_exp_ntt;
+            let w_exp_i = self.encrypt_matrix_reg(prod);
+            res.push(w_exp_i);
+        }
         res
     }
 
@@ -100,9 +148,26 @@ impl<'a> Client<'a> {
         }
 
         // Params for expansion
+        let further_dims = 1usize << params.db_dim_2;
+        let num_expanded = 1usize << params.db_dim_1;
+        let num_bits_to_gen = params.t_gsw * further_dims + num_expanded;
+        let g = log2(num_bits_to_gen as u64) as usize;
+        let stop_round = log2((params.t_gsw * further_dims) as u64) as usize;
+        pp.v_expansion_left = self.generate_expansion_params(g, params.t_exp_left);
+        pp.v_expansion_right = self.generate_expansion_params(stop_round + 1, params.t_exp_right);
 
         // Params for converison
-
+        let g_conv = build_gadget(params, 2, 2 * m_conv);
+        let sk_reg_squared_ntt = &self.sk_reg.ntt() * &self.sk_reg.ntt();
+        pp.v_conversion = PolyMatrixNTT::zero(params, 2, 2 * m_conv);
+        for i in 0..2*m_conv {
+            if i % 2 == 0 {
+                let val = g_conv.get_poly(0, i)[0];
+                let sigma = &sk_reg_squared_ntt * &single_poly(params, val).ntt();
+                let ct = self.encrypt_matrix_reg(sigma);
+                pp.v_conversion.copy_into(&ct, 0, i);
+            }
+        }
 
         pp
     }
