@@ -6,7 +6,7 @@ pub struct PublicParameters<'a> {
     v_packing: Vec<PolyMatrixNTT<'a>>,            // Ws
     v_expansion_left: Vec<PolyMatrixNTT<'a>>,
     v_expansion_right: Vec<PolyMatrixNTT<'a>>,
-    v_conversion: PolyMatrixNTT<'a>,              // V
+    conversion: PolyMatrixNTT<'a>,              // V
 }
 
 impl<'a> PublicParameters<'a> {
@@ -15,9 +15,14 @@ impl<'a> PublicParameters<'a> {
             v_packing: Vec::new(), 
             v_expansion_left: Vec::new(), 
             v_expansion_right: Vec::new(), 
-            v_conversion: PolyMatrixNTT::zero(params, 2, 2 * params.m_conv()) 
+            conversion: PolyMatrixNTT::zero(params, 2, 2 * params.m_conv()) 
         }
     }
+}
+
+pub struct Query<'a> {
+    ct: PolyMatrixNTT<'a>,
+    v_ct: Vec<PolyMatrixNTT<'a>>,
 }
 
 pub struct Client<'a> {
@@ -143,30 +148,41 @@ impl<'a> Client<'a> {
             pp.v_packing.push(w);
         }
 
-        // Params for expansion
-        let further_dims = 1usize << params.db_dim_2;
-        let num_expanded = 1usize << params.db_dim_1;
-        let num_bits_to_gen = params.t_gsw * further_dims + num_expanded;
-        let g = log2(num_bits_to_gen as u64) as usize;
-        let stop_round = log2((params.t_gsw * further_dims) as u64) as usize;
-        pp.v_expansion_left = self.generate_expansion_params(g, params.t_exp_left);
-        pp.v_expansion_right = self.generate_expansion_params(stop_round + 1, params.t_exp_right);
+        if params.expand_queries {
+            // Params for expansion
+            let further_dims = 1usize << params.db_dim_2;
+            let num_expanded = 1usize << params.db_dim_1;
+            let num_bits_to_gen = params.t_gsw * further_dims + num_expanded;
+            let g = log2(num_bits_to_gen as u64) as usize;
+            let stop_round = log2((params.t_gsw * further_dims) as u64) as usize;
+            pp.v_expansion_left = self.generate_expansion_params(g, params.t_exp_left);
+            pp.v_expansion_right = self.generate_expansion_params(stop_round + 1, params.t_exp_right);
 
-        // Params for converison
-        let g_conv = build_gadget(params, 2, 2 * m_conv);
-        let sk_reg_squared_ntt = &self.sk_reg.ntt() * &self.sk_reg.ntt();
-        pp.v_conversion = PolyMatrixNTT::zero(params, 2, 2 * m_conv);
-        for i in 0..2*m_conv {
-            if i % 2 == 0 {
-                let val = g_conv.get_poly(0, i)[0];
-                let sigma = &sk_reg_squared_ntt * &single_poly(params, val).ntt();
-                let ct = self.encrypt_matrix_reg(sigma);
-                pp.v_conversion.copy_into(&ct, 0, i);
+            // Params for converison
+            let g_conv = build_gadget(params, 2, 2 * m_conv);
+            let sk_reg_squared_ntt = &self.sk_reg.ntt() * &self.sk_reg.ntt();
+            pp.conversion = PolyMatrixNTT::zero(params, 2, 2 * m_conv);
+            for i in 0..2*m_conv {
+                if i % 2 == 0 {
+                    let val = g_conv.get_poly(0, i)[0];
+                    let sigma = &sk_reg_squared_ntt * &single_poly(params, val).ntt();
+                    let ct = self.encrypt_matrix_reg(sigma);
+                    pp.conversion.copy_into(&ct, 0, i);
+                }
             }
         }
 
         pp
     }
-    // fn generate_query(&self) -> Query<'a, Params>;
+
+    // fn generate_query(&self) -> Query<'a> {
+    //     let params = self.params;
+    //     let mut query = Query { ct: PolyMatrixNTT::zero(params, 1, 1), v_ct: Vec::new() }
+    //     if params.expand_queries {
+            
+    //     } else {
+
+    //     }
+    // }
     
 }

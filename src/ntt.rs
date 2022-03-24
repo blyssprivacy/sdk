@@ -1,3 +1,4 @@
+#[cfg(target_feature = "avx2")]
 use std::arch::x86_64::*;
 
 use crate::{
