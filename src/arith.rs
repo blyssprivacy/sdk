@@ -17,6 +17,14 @@ pub fn multiply_add_modular(params: &Params, a: u64, b: u64, x: u64, c: usize) -
     (a * b + x) % params.moduli[c]
 }
 
+pub fn add_modular(params: &Params, a: u64, b: u64, c: usize) -> u64 {
+    (a + b) % params.moduli[c]
+}
+
+pub fn invert_modular(params: &Params, a: u64, c: usize) -> u64 {
+    params.moduli[c] - a
+}
+
 pub fn modular_reduce(params: &Params, x: u64, c: usize) -> u64 {
     (x) % params.moduli[c]
 }
