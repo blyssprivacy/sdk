@@ -89,7 +89,6 @@ impl<'a> Client<'a> {
         for i in 0..m {
             p.copy_into(&self.get_regev_sample(), 0, i);
         }
-
         p
     }
 
@@ -107,8 +106,6 @@ impl<'a> Client<'a> {
     }
 
     fn generate_expansion_params(&mut self, num_exp: usize, m_exp: usize) -> Vec<PolyMatrixNTT<'a>> {
-        // MatPoly G_exp = buildGadget(1, m_exp);
-        // MatPoly G_exp_nttd = to_ntt(G_exp);
         let params = self.params;
         let g_exp = build_gadget(params, 1, m_exp);
         let g_exp_ntt = g_exp.ntt();
@@ -117,7 +114,6 @@ impl<'a> Client<'a> {
         for i in 0..num_exp {
             let t = (params.poly_len / (1 << i)) + 1;
             let tau_sk_reg = automorph_alloc(&self.sk_reg, t);
-            // MatPoly W_exp_i = encryptSimpleRegevMatrix(s0, multiply(tau_s0, G_exp_nttd));
             let prod = &tau_sk_reg.ntt() * &g_exp_ntt;
             let w_exp_i = self.encrypt_matrix_reg(prod);
             res.push(w_exp_i);
