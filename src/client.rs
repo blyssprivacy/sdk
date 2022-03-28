@@ -41,10 +41,8 @@ impl<'a> PublicParameters<'a> {
     pub fn serialize(&self) -> Vec<u8> {
         let mut data = Vec::new();
         for v in self.to_raw().iter() {
-            println!("{} bytes", data.len());
             serialize_vec_polymatrix(&mut data, v);
         }
-        println!("{} bytes", data.len());
         data
     }
 }
@@ -220,20 +218,24 @@ impl<'a> Client<'a> {
             // Params for expansion
             
             pp.v_expansion_left = self.generate_expansion_params(self.g, params.t_exp_left);
-            println!("dims exp left {} x {}", pp.v_expansion_left[0].rows, pp.v_expansion_left[0].cols);
             pp.v_expansion_right = self.generate_expansion_params(self.stop_round + 1, params.t_exp_right);
 
             // Params for converison
             let g_conv = build_gadget(params, 2, 2 * m_conv);
-            let sk_reg_squared_ntt = &self.sk_reg.ntt() * &self.sk_reg.ntt();
+            let sk_reg_ntt = self.sk_reg.ntt();
+            let sk_reg_squared_ntt = &sk_reg_ntt * &sk_reg_ntt;
             pp.conversion = PolyMatrixNTT::zero(params, 2, 2 * m_conv);
             for i in 0..2*m_conv {
+                let sigma;
                 if i % 2 == 0 {
                     let val = g_conv.get_poly(0, i)[0];
-                    let sigma = &sk_reg_squared_ntt * &single_poly(params, val).ntt();
-                    let ct = self.encrypt_matrix_reg(&sigma);
-                    pp.conversion.copy_into(&ct, 0, i);
+                    sigma = &sk_reg_squared_ntt * &single_poly(params, val).ntt();
+                } else {
+                    let val = g_conv.get_poly(1, i)[0];
+                    sigma = &sk_reg_ntt * &single_poly(params, val).ntt();
                 }
+                let ct = self.encrypt_matrix_reg(&sigma);
+                pp.conversion.copy_into(&ct, 0, i);
             }
         }
 
@@ -346,8 +348,6 @@ impl<'a> Client<'a> {
             let mut res = ((r + sign*(denom/2)) as i128) / (denom as i128);
             res = (res + (denom as i128/p_i128)*(p_i128) + 2*(p_i128)) % (p_i128);
             result.data[i] = res as u64;
-
-            // println!("{:?}, {:?} -> {:?}", val_first, val_rest, res as u64);
         }
         println!("{:?}", result.data);
         

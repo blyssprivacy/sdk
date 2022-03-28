@@ -62,7 +62,6 @@ fn main() {
     let resp_json: Value = serde_json::from_str(&setup_resp_str).unwrap();
     let id = resp_json["id"].as_str().unwrap();
     let mut full_query_buf = id.as_bytes().to_vec();
-    println!("id size {}", full_query_buf.len());
     full_query_buf.append(&mut query_buf);
     let query_resp = send_api_req_vec("/query", full_query_buf).unwrap();
     println!("query_resp len {}", query_resp.len());

@@ -69,7 +69,6 @@ mod test {
         for _ in 0..trials {
             let val = dg.sample();
             v.push(val);
-            // println!("{}", val);
             sum += val;
         }
         let mean = sum as f64 / trials as f64;
