@@ -9,6 +9,10 @@ pub const fn log2(a: u64) -> u64 {
     std::mem::size_of::<u64>() as u64 * 8 - a.leading_zeros() as u64 - 1
 }
 
+pub fn log2_ceil(a: usize) -> usize {
+    f64::ceil(f64::log2(a as f64)) as usize
+}
+
 pub fn multiply_modular(params: &Params, a: u64, b: u64, c: usize) -> u64 {
     (a * b) % params.moduli[c]
 }
@@ -77,6 +81,21 @@ pub fn div2_uint_mod(operand: u64, modulus: u64) -> u64 {
     } else {
         return operand >> 1;
     }
+}
+
+pub fn recenter(val: u64, from_modulus: u64, to_modulus: u64) -> u64 {
+    assert!(from_modulus >= to_modulus);
+
+    let from_modulus_i64 = from_modulus as i64;
+    let to_modulus_i64 = to_modulus as i64;
+
+    let mut a_val = val as i64;
+    if val >= from_modulus/2 {
+        a_val -= from_modulus_i64;
+    }
+    a_val = a_val + (from_modulus_i64/to_modulus_i64)*to_modulus_i64 + 2*to_modulus_i64;
+    a_val %= to_modulus_i64;
+    a_val as u64
 }
 
 #[cfg(test)]

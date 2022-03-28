@@ -39,8 +39,8 @@ pub trait PolyMatrix<'a> {
     fn copy_into(&mut self, p: &Self, target_row: usize, target_col: usize) {
         assert!(target_row < self.get_rows());
         assert!(target_col < self.get_cols());
-        assert!(target_row + p.get_rows() < self.get_rows());
-        assert!(target_col + p.get_cols() < self.get_cols());
+        assert!(target_row + p.get_rows() <= self.get_rows());
+        assert!(target_col + p.get_cols() <= self.get_cols());
         for r in 0..p.get_rows() {
             for c in 0..p.get_cols() {
                 let pol_src = p.get_poly(r, c);
@@ -145,6 +145,20 @@ impl<'a> PolyMatrixRaw<'a> {
     pub fn ntt(&self) -> PolyMatrixNTT<'a> {
         to_ntt_alloc(&self)
     }
+
+    pub fn to_vec(&self, modulus_bits: usize) -> Vec<u8> {
+        let params = self.params;
+        let sz_bits = self.rows * self.cols * params.poly_len * modulus_bits;
+        let sz_bytes = f64::ceil((sz_bits as f64) / 8f64) as usize;
+        let sz_bytes_roundup_16 = ((sz_bytes + 15) / 16) * 16;
+        let mut data = vec![0u8; sz_bytes_roundup_16];
+        let mut bit_offs = 0;
+        for i in 0..self.rows * self.cols * params.poly_len {
+            write_arbitrary_bits(data.as_mut_slice(), self.data[i], bit_offs, modulus_bits);
+            bit_offs += modulus_bits;
+        }
+        data
+    }
 }
 
 impl<'a> PolyMatrix<'a> for PolyMatrixNTT<'a> {
@@ -237,11 +251,8 @@ pub fn add_poly(params: &Params, res: &mut [u64], a: &[u64], b: &[u64]) {
 }
 
 pub fn invert_poly(params: &Params, res: &mut [u64], a: &[u64]) {
-    for c in 0..params.crt_count {
-        for i in 0..params.poly_len {
-            let idx = c * params.poly_len + i;
-            res[idx] = invert_modular(params, a[idx], c);
-        }
+    for i in 0..params.poly_len {
+        res[i] = params.modulus - a[i];
     }
 }
 
@@ -455,7 +466,7 @@ pub fn from_ntt(a: &mut PolyMatrixRaw, b: &PolyMatrixNTT) {
                 scratch[0..pol_src.len()].copy_from_slice(pol_src);
                 ntt_inverse(params, scratch);
                 for z in 0..params.poly_len {
-                    pol_dst[z] = params.crt_compose_2(scratch[z], scratch[params.poly_len + z]);
+                    pol_dst[z] = params.crt_compose(scratch, z);
                 }
             }
         }

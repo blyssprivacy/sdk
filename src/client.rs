@@ -1,6 +1,16 @@
-use std::collections::HashMap;
+use crate::{poly::*, params::*, discrete_gaussian::*, gadget::*, arith::*, util::*, number_theory::*};
 
-use crate::{poly::*, params::*, discrete_gaussian::*, gadget::*, arith::*};
+fn serialize_polymatrix(vec: &mut Vec<u8>, a: &PolyMatrixRaw) {
+    for i in 0..a.rows * a.cols * a.params.poly_len {
+        vec.extend_from_slice(&u64::to_ne_bytes(a.data[i]));
+    }
+}
+
+fn serialize_vec_polymatrix(vec: &mut Vec<u8>, a: &Vec<PolyMatrixRaw>) {
+    for i in 0..a.len() {
+        serialize_polymatrix(vec, &a[i]);
+    }
+}
 
 pub struct PublicParameters<'a> {
     v_packing: Vec<PolyMatrixNTT<'a>>,            // Ws
@@ -10,7 +20,7 @@ pub struct PublicParameters<'a> {
 }
 
 impl<'a> PublicParameters<'a> {
-    fn init(params: &'a Params) -> Self {
+    pub fn init(params: &'a Params) -> Self {
         PublicParameters { 
             v_packing: Vec::new(), 
             v_expansion_left: Vec::new(), 
@@ -18,11 +28,41 @@ impl<'a> PublicParameters<'a> {
             conversion: PolyMatrixNTT::zero(params, 2, 2 * params.m_conv()) 
         }
     }
+
+    pub fn to_raw(&self) -> Vec<Vec<PolyMatrixRaw>> {
+        vec![
+            self.v_packing.iter().map(from_ntt_alloc).collect(),
+            self.v_expansion_left.iter().map(from_ntt_alloc).collect(),
+            self.v_expansion_right.iter().map(from_ntt_alloc).collect(),
+            vec![from_ntt_alloc(&self.conversion)]
+        ]
+    }
+
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut data = Vec::new();
+        for v in self.to_raw().iter() {
+            println!("{} bytes", data.len());
+            serialize_vec_polymatrix(&mut data, v);
+        }
+        println!("{} bytes", data.len());
+        data
+    }
 }
 
 pub struct Query<'a> {
-    ct: PolyMatrixNTT<'a>,
-    v_ct: Vec<PolyMatrixNTT<'a>>,
+    ct: Option<PolyMatrixRaw<'a>>,
+    // v_ct: Option<Vec<PolyMatrixRaw<'a>>>,
+}
+
+impl<'a> Query<'a> {
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut data = Vec::new();
+        if self.ct.is_some() {
+            let ct = self.ct.as_ref().unwrap();
+            serialize_polymatrix(&mut data, &ct);
+        }
+        data
+    }
 }
 
 pub struct Client<'a> {
@@ -32,6 +72,8 @@ pub struct Client<'a> {
     sk_gsw_full: PolyMatrixRaw<'a>,
     sk_reg_full: PolyMatrixRaw<'a>,
     dg: DiscreteGaussian,
+    g: usize,
+    stop_round: usize,
 }
 
 fn matrix_with_identity<'a> (p: &PolyMatrixRaw<'a>) -> PolyMatrixRaw<'a> {
@@ -40,6 +82,24 @@ fn matrix_with_identity<'a> (p: &PolyMatrixRaw<'a>) -> PolyMatrixRaw<'a> {
     r.copy_into(p, 0, 0);
     r.copy_into(&PolyMatrixRaw::identity(p.params, p.rows, p.rows), 0, 1);
     r
+}
+
+fn params_with_moduli(params: &Params, moduli: &Vec<u64>) -> Params {
+    Params::init(
+        params.poly_len, 
+        moduli, 
+        params.noise_width,
+        params.n,
+        params.pt_modulus,
+        params.q2_bits,
+        params.t_conv,
+        params.t_exp_left,
+        params.t_exp_right,
+        params.t_gsw,
+        params.expand_queries,
+        params.db_dim_1,
+        params.db_dim_2,
+    )
 }
 
 impl<'a> Client<'a> {
@@ -51,6 +111,12 @@ impl<'a> Client<'a> {
         let sk_gsw_full = matrix_with_identity(&sk_gsw);
         let sk_reg_full = matrix_with_identity(&sk_reg);
         let dg = DiscreteGaussian::init(params);
+
+        let further_dims = params.db_dim_2;
+        let num_expanded = 1usize << params.db_dim_1;
+        let num_bits_to_gen = params.t_gsw * further_dims + num_expanded;
+        let g = log2_ceil(num_bits_to_gen);
+        let stop_round = log2_ceil(params.t_gsw * further_dims);
         Self {
             params,
             sk_gsw,
@@ -58,6 +124,8 @@ impl<'a> Client<'a> {
             sk_gsw_full,
             sk_reg_full,
             dg,
+            g,
+            stop_round,
         }
     }
 
@@ -97,14 +165,14 @@ impl<'a> Client<'a> {
         p
     }
 
-    fn encrypt_matrix_gsw(&mut self, ag: PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
+    fn encrypt_matrix_gsw(&mut self, ag: &PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
         let mx = ag.cols;
         let p = self.get_fresh_gsw_public_key(mx);
         let res = &(p.ntt()) + &(ag.pad_top(1));
         res
     }
     
-    fn encrypt_matrix_reg(&mut self, a: PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
+    fn encrypt_matrix_reg(&mut self, a: &PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
         let m = a.cols;
         let p = self.get_fresh_reg_public_key(m);
         &p + &a.pad_top(1)
@@ -120,7 +188,7 @@ impl<'a> Client<'a> {
             let t = (params.poly_len / (1 << i)) + 1;
             let tau_sk_reg = automorph_alloc(&self.sk_reg, t);
             let prod = &tau_sk_reg.ntt() * &g_exp_ntt;
-            let w_exp_i = self.encrypt_matrix_reg(prod);
+            let w_exp_i = self.encrypt_matrix_reg(&prod);
             res.push(w_exp_i);
         }
         res
@@ -144,19 +212,16 @@ impl<'a> Client<'a> {
             let scaled = scalar_multiply_alloc(&sk_reg_ntt, &gadget_conv_ntt);
             let mut ag = PolyMatrixNTT::zero(params, params.n, m_conv);
             ag.copy_into(&scaled, i, 0);
-            let w = self.encrypt_matrix_gsw(ag);
+            let w = self.encrypt_matrix_gsw(&ag);
             pp.v_packing.push(w);
         }
 
         if params.expand_queries {
             // Params for expansion
-            let further_dims = 1usize << params.db_dim_2;
-            let num_expanded = 1usize << params.db_dim_1;
-            let num_bits_to_gen = params.t_gsw * further_dims + num_expanded;
-            let g = log2(num_bits_to_gen as u64) as usize;
-            let stop_round = log2((params.t_gsw * further_dims) as u64) as usize;
-            pp.v_expansion_left = self.generate_expansion_params(g, params.t_exp_left);
-            pp.v_expansion_right = self.generate_expansion_params(stop_round + 1, params.t_exp_right);
+            
+            pp.v_expansion_left = self.generate_expansion_params(self.g, params.t_exp_left);
+            println!("dims exp left {} x {}", pp.v_expansion_left[0].rows, pp.v_expansion_left[0].cols);
+            pp.v_expansion_right = self.generate_expansion_params(self.stop_round + 1, params.t_exp_right);
 
             // Params for converison
             let g_conv = build_gadget(params, 2, 2 * m_conv);
@@ -166,7 +231,7 @@ impl<'a> Client<'a> {
                 if i % 2 == 0 {
                     let val = g_conv.get_poly(0, i)[0];
                     let sigma = &sk_reg_squared_ntt * &single_poly(params, val).ntt();
-                    let ct = self.encrypt_matrix_reg(sigma);
+                    let ct = self.encrypt_matrix_reg(&sigma);
                     pp.conversion.copy_into(&ct, 0, i);
                 }
             }
@@ -175,14 +240,117 @@ impl<'a> Client<'a> {
         pp
     }
 
-    // fn generate_query(&self) -> Query<'a> {
-    //     let params = self.params;
-    //     let mut query = Query { ct: PolyMatrixNTT::zero(params, 1, 1), v_ct: Vec::new() }
-    //     if params.expand_queries {
-            
-    //     } else {
+    pub fn generate_query(&mut self, idx_target: usize) -> Query<'a> {
+        let params = self.params;
+        let further_dims = params.db_dim_2;
+        let idx_dim0= idx_target / (1 << further_dims);
+        let idx_further  = idx_target % (1 << further_dims);
+        let scale_k = params.modulus / params.pt_modulus;
+        let bits_per = get_bits_per(params, params.t_gsw);
 
-    //     }
-    // }
+        let mut query = Query { ct: None };
+        if params.expand_queries {
+            // pack query into single ciphertext
+            let mut sigma = PolyMatrixRaw::zero(params, 1, 1);
+            sigma.data[2*idx_dim0] = scale_k;
+            for i in 0..further_dims as u64 {
+                let bit: u64 = ((idx_further as u64) & (1 << i)) >> i;
+                for j in 0..params.t_gsw {
+                    let val = (1u64 << (bits_per * j)) * bit;
+                    let idx = (i as usize) * params.t_gsw + (j as usize);
+                    sigma.data[2*idx + 1] = val;
+                }
+            }
+            let inv_2_g_first = invert_uint_mod(1 << self.g, params.modulus).unwrap();
+            let inv_2_g_rest = invert_uint_mod(1 << (self.stop_round+1), params.modulus).unwrap();
+
+            for i in 0..params.poly_len/2 {
+                sigma.data[2*i]   = multiply_uint_mod(sigma.data[2*i], inv_2_g_first, params.modulus);
+                sigma.data[2*i+1] = multiply_uint_mod(sigma.data[2*i+1], inv_2_g_rest, params.modulus);
+            }
+
+            query.ct = Some(from_ntt_alloc(&self.encrypt_matrix_reg(&to_ntt_alloc(&sigma))));
+        } else {
+            assert!(false);
+        }
+        query
+    }
     
+    pub fn decode_response(&self, data: &[u8]) -> Vec<u8> {
+        /*
+            0. NTT over q2 the secret key
+
+            1. read first row in q2_bit chunks
+            2. read rest in q1_bit chunks
+            3. NTT over q2 the first row
+            4. Multiply the results of (0) and (3)
+            5. Divide and round correctly
+        */
+        let params = self.params;
+        let p = params.pt_modulus;
+        let p_bits = log2_ceil(params.pt_modulus as usize);
+        let q1 = 4 * params.pt_modulus;
+        let q1_bits = log2_ceil(q1 as usize);
+        let q2 = Q2_VALUES[params.q2_bits as usize];
+        let q2_bits = params.q2_bits as usize;
+
+        let q2_params = params_with_moduli(params, &vec![q2]);
+
+        // this only needs to be done during keygen
+        let mut sk_gsw_q2 = PolyMatrixRaw::zero(&q2_params, params.n, 1);
+        for i in 0..params.poly_len * params.n {
+            sk_gsw_q2.data[i] = recenter(self.sk_gsw.data[i], params.modulus, q2);
+        }
+        let mut sk_gsw_q2_ntt = PolyMatrixNTT::zero(&q2_params, params.n, 1);
+        to_ntt(&mut sk_gsw_q2_ntt, &sk_gsw_q2);
+
+        // this must be done during decoding
+        let mut first_row = PolyMatrixRaw::zero(&q2_params, 1, params.n);
+        let mut rest_rows = PolyMatrixRaw::zero(&params, params.n, params.n);
+        let mut bit_offs = 0;
+        for i in 0..params.n * params.poly_len {
+            first_row.data[i] = read_arbitrary_bits(data, bit_offs, q2_bits);
+            bit_offs += q2_bits;
+        }
+        for i in 0..params.n * params.n * params.poly_len {
+            rest_rows.data[i] = read_arbitrary_bits(data, bit_offs, q1_bits);
+            bit_offs += q1_bits;
+        }
+
+        let mut first_row_q2 = PolyMatrixNTT::zero(&q2_params, 1, params.n);
+        to_ntt(&mut first_row_q2, &first_row);
+
+        let sk_prod = (&sk_gsw_q2_ntt * &first_row_q2).raw();
+
+        let q1_i64 = q1 as i64;
+        let q2_i64 = q2 as i64;
+        let p_i128 = p as i128;
+        let mut result = PolyMatrixRaw::zero(&params, params.n, params.n);
+        for i in 0..result.rows * result.cols * params.poly_len {
+            let mut val_first = sk_prod.data[i] as i64;
+            if val_first >= q2_i64/2 {
+                val_first -= q2_i64;
+            }
+            let mut val_rest = rest_rows.data[i] as i64;
+            if val_rest >= q1_i64/2 {
+                val_rest -= q1_i64;
+            }
+
+            let denom = (q2 * (q1 / p)) as i64;
+
+            let mut r = val_first * q1_i64;
+            r += val_rest * q2_i64;
+
+            // divide r by q2, rounding
+            let sign: i64 = if r >= 0 { 1 } else { -1 };
+            let mut res = ((r + sign*(denom/2)) as i128) / (denom as i128);
+            res = (res + (denom as i128/p_i128)*(p_i128) + 2*(p_i128)) % (p_i128);
+            result.data[i] = res as u64;
+
+            // println!("{:?}, {:?} -> {:?}", val_first, val_rest, res as u64);
+        }
+        println!("{:?}", result.data);
+        
+        result.to_vec(p_bits)
+    }
 }

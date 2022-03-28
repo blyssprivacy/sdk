@@ -1,5 +1,11 @@
 use crate::{arith::*, ntt::*, number_theory::*};
 
+pub static Q2_VALUES: [u64; 37] = [
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 12289, 12289, 61441, 65537, 65537, 520193, 786433, 786433, 3604481, 7340033, 16515073, 33292289, 67043329, 132120577, 268369921, 469762049, 1073479681, 2013265921, 4293918721, 8588886017, 17175674881, 34359214081, 68718428161
+];
+
+#[derive(Debug)]
+#[derive(PartialEq)]
 pub struct Params {    
     pub poly_len: usize,
     pub poly_len_log2: usize,
@@ -10,11 +16,11 @@ pub struct Params {
     pub moduli: Vec<u64>,
     pub modulus: u64,
     pub modulus_log2: u64,
-
     pub noise_width: f64,
 
     pub n: usize,
-
+    pub pt_modulus: u64,
+    pub q2_bits: u64,
     pub t_conv: usize,
     pub t_exp_left: usize,
     pub t_exp_right: usize,
@@ -47,7 +53,12 @@ impl Params {
     }
 
     pub fn m_conv(&self) -> usize {
-        2 * self.t_conv
+        self.t_conv
+    }
+
+    pub fn crt_compose_1(&self, x: u64) -> u64 {
+        assert_eq!(self.crt_count, 1);
+        x
     }
 
     pub fn crt_compose_2(&self, x: u64, y: u64) -> u64 {
@@ -62,11 +73,21 @@ impl Params {
         (val % (self.modulus as u128)) as u64 // FIXME: use barrett
     }
 
+    pub fn crt_compose(&self, a: &[u64], idx: usize) -> u64 {
+        if self.crt_count == 1 {
+            self.crt_compose_1(a[idx])
+        } else {
+            self.crt_compose_2(a[idx], a[idx + self.poly_len])
+        }
+    }
+
     pub fn init(
         poly_len: usize,
         moduli: &Vec<u64>,
         noise_width: f64,
         n: usize,
+        pt_modulus: u64,
+        q2_bits: u64,
         t_conv: usize,
         t_exp_left: usize,
         t_exp_right: usize,
@@ -83,7 +104,7 @@ impl Params {
         for m in moduli {
             modulus *= m;
         }
-        let modulus_log2 = log2(modulus);
+        let modulus_log2 = log2_ceil(modulus as usize) as u64;
         Self {
             poly_len,
             poly_len_log2,
@@ -95,6 +116,8 @@ impl Params {
             modulus_log2,
             noise_width,
             n,
+            pt_modulus,
+            q2_bits,
             t_conv,
             t_exp_left,
             t_exp_right,

@@ -1,5 +1,6 @@
-use rand::{thread_rng, Rng, rngs::ThreadRng};
-use rand::distributions::OpenClosed01;
+use rand::prelude::Distribution;
+use rand::{thread_rng, rngs::ThreadRng};
+use rand::distributions::WeightedIndex;
 
 use crate::params::*;
 use crate::poly::*;
@@ -8,45 +9,33 @@ use std::f64::consts::PI;
 pub const NUM_WIDTHS: usize = 8;
 
 pub struct DiscreteGaussian {
-    max_val: i64,
-    table: Vec<f64>,
+    choices: Vec<i64>,
+    dist: WeightedIndex<f64>,
     rng: ThreadRng
 }
 
 impl DiscreteGaussian {
     pub fn init(params: &Params) -> Self {
         let max_val = (params.noise_width * (NUM_WIDTHS as f64)).ceil() as i64;
+        let mut choices = Vec::new();
         let mut table = vec![0f64; 0];
-        let mut sum_p = 0f64;
-        table.push(0f64);
         for i in -max_val..max_val+1 {
             let p_val = f64::exp(-PI * f64::powi(i as f64, 2) / f64::powi(params.noise_width, 2));
+            choices.push(i);
             table.push(p_val);
-            sum_p += p_val;
         }
-        for i in 0..table.len() {
-            table[i] /= sum_p;
-        }
-        table.push(1.0);
-    
+        let dist = WeightedIndex::new(&table).unwrap();
+
         Self {
-            max_val,
-            table,
+            choices,
+            dist,
             rng: thread_rng()
         }
     }
 
-    // FIXME: this is not necessarily constant-time w/ optimization
+    // FIXME: not constant-time
     pub fn sample(&mut self) -> i64 {
-        let val: f64 = self.rng.sample(OpenClosed01);
-        let mut found = 0i64;
-        for i in 0..self.table.len()-1 {
-           let bit1: i64 = (val <= self.table[i]) as i64;
-           let bit2: i64 = (val > self.table[i+1]) as i64;
-            found += bit1 * bit2 * (i as i64);
-        }
-        found -= self.max_val;
-        found
+        self.choices[self.dist.sample(&mut self.rng)]
     }
 
     pub fn sample_matrix(&mut self, p: &mut PolyMatrixRaw) {
@@ -62,5 +51,30 @@ impl DiscreteGaussian {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use crate::util::*;
+
+    #[test]
+    fn dg_seems_okay() {
+        let params = get_test_params();
+        let mut dg = DiscreteGaussian::init(&params);
+        let mut v = Vec::new();
+        let trials = 10000;
+        let mut sum = 0;
+        for _ in 0..trials {
+            let val = dg.sample();
+            v.push(val);
+            // println!("{}", val);
+            sum += val;
+        }
+        let mean = sum as f64 / trials as f64;
+        let std_dev = params.noise_width / f64::sqrt(2f64 * std::f64::consts::PI);
+        let std_dev_of_mean = std_dev / f64::sqrt(trials as f64);
+        assert!(f64::abs(mean) < std_dev_of_mean * 5f64);
     }
 }
