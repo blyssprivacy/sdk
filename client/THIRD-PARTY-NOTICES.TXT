@@ -1,4 +1,9 @@
-Copyright (c) 2018 Samir Menon <menon.samir@gmail.com>
+The attached notices are provided for information only.
+
+License notice for wasm-bindgen
+-------------------------------
+
+Copyright (c) 2014 Alex Crichton
 
 Permission is hereby granted, free of charge, to any
 person obtaining a copy of this software and associated

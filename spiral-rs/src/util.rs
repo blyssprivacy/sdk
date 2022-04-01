@@ -29,6 +29,30 @@ pub fn get_test_params() -> Params {
     )
 }
 
+pub const fn get_empty_params() -> Params {
+    Params { 
+        poly_len: 0, 
+        poly_len_log2: 0, 
+        ntt_tables: Vec::new(), 
+        scratch: Vec::new(), 
+        crt_count: 0, 
+        moduli: Vec::new(), 
+        modulus: 0, 
+        modulus_log2: 0, 
+        noise_width: 0f64, 
+        n: 0, 
+        pt_modulus: 0, 
+        q2_bits: 0, 
+        t_conv: 0, 
+        t_exp_left: 0, 
+        t_exp_right: 0, 
+        t_gsw: 0, 
+        expand_queries: false, 
+        db_dim_1: 0, 
+        db_dim_2: 0 
+    }
+}
+
 pub fn params_from_json(cfg: &str) -> Params {
     let v: Value = serde_json::from_str(cfg).unwrap();
     let n = v["n"].as_u64().unwrap() as usize;

@@ -104,7 +104,7 @@ impl Params {
         for m in moduli {
             modulus *= m;
         }
-        let modulus_log2 = log2_ceil(modulus as usize) as u64;
+        let modulus_log2 = log2_ceil(modulus);
         Self {
             poly_len,
             poly_len_log2,

@@ -8,10 +8,11 @@ edition = "2018"
 crate-type = ["cdylib", "rlib"]
 
 [features]
-default = ["console_error_panic_hook"]
+default = []
 
 [dependencies]
-wasm-bindgen = "0.2.63"
+spiral-rs = { path = "../spiral-rs" }
+wasm-bindgen = "0.2.74"
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires

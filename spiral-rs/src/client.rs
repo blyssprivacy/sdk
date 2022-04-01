@@ -113,8 +113,8 @@ impl<'a> Client<'a> {
         let further_dims = params.db_dim_2;
         let num_expanded = 1usize << params.db_dim_1;
         let num_bits_to_gen = params.t_gsw * further_dims + num_expanded;
-        let g = log2_ceil(num_bits_to_gen);
-        let stop_round = log2_ceil(params.t_gsw * further_dims);
+        let g = log2_ceil_usize(num_bits_to_gen);
+        let stop_round = log2_ceil_usize(params.t_gsw * further_dims);
         Self {
             params,
             sk_gsw,
@@ -290,9 +290,9 @@ impl<'a> Client<'a> {
         */
         let params = self.params;
         let p = params.pt_modulus;
-        let p_bits = log2_ceil(params.pt_modulus as usize);
+        let p_bits = log2_ceil(params.pt_modulus);
         let q1 = 4 * params.pt_modulus;
-        let q1_bits = log2_ceil(q1 as usize);
+        let q1_bits = log2_ceil(q1) as usize;
         let q2 = Q2_VALUES[params.q2_bits as usize];
         let q2_bits = params.q2_bits as usize;
 
@@ -351,6 +351,6 @@ impl<'a> Client<'a> {
         }
         println!("{:?}", result.data);
         
-        result.to_vec(p_bits)
+        result.to_vec(p_bits as usize)
     }
 }

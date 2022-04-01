@@ -9,7 +9,11 @@ pub const fn log2(a: u64) -> u64 {
     std::mem::size_of::<u64>() as u64 * 8 - a.leading_zeros() as u64 - 1
 }
 
-pub fn log2_ceil(a: usize) -> usize {
+pub fn log2_ceil(a: u64) -> u64 {
+    f64::ceil(f64::log2(a as f64)) as u64
+}
+
+pub fn log2_ceil_usize(a: usize) -> usize {
     f64::ceil(f64::log2(a as f64)) as usize
 }
 
