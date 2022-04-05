@@ -2,6 +2,7 @@ use serde_json::Value;
 use spiral_rs::util::*;
 use spiral_rs::client::*;
 use std::env;
+use std::time::Instant;
 
 fn send_api_req_text(path: &str, data: Vec<u8>) -> Option<String> {
     let client = reqwest::blocking::Client::builder()
@@ -29,7 +30,7 @@ fn send_api_req_vec(path: &str, data: Vec<u8>) -> Option<Vec<u8>> {
 }
 
 fn main() {
-    let cfg = r#"
+    let cfg_expand = r#"
         {'n': 2,
         'nu_1': 9,
         'nu_2': 6,
@@ -41,6 +42,20 @@ fn main() {
         't_exp': 8,
         't_exp_right': 56}
     "#;
+    let cfg_direct = r#"
+        {'kinda_direct_upload': 1,
+        'n': 5,
+        'nu_1': 11,
+        'nu_2': 3,
+        'p': 65536,
+        'q_prime_bits': 27,
+        's_e': 57.793748020122216,
+        't_GSW': 3,
+        't_conv': 56,
+        't_exp': 56,
+        't_exp_right': 56}
+    "#;
+    let cfg = cfg_direct;
     let cfg = cfg.replace("'", "\"");
     let params = params_from_json(&cfg);
 
@@ -63,7 +78,11 @@ fn main() {
     let id = resp_json["id"].as_str().unwrap();
     let mut full_query_buf = id.as_bytes().to_vec();
     full_query_buf.append(&mut query_buf);
+
+    let now = Instant::now();
     let query_resp = send_api_req_vec("/query", full_query_buf).unwrap();
+    let duration = now.elapsed().as_millis();
+    println!("duration of query processing is {} ms", duration);
     println!("query_resp len {}", query_resp.len());
 
     let _result = c.decode_response(query_resp.as_slice());

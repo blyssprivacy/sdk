@@ -159,6 +159,12 @@ impl<'a> PolyMatrixRaw<'a> {
         }
         data
     }
+
+    pub fn single_value(params: &'a Params, value: u64) -> PolyMatrixRaw<'a> {
+        let mut out = Self::zero(params, 1, 1);
+        out.data[0] = value;
+        out
+    }
 }
 
 impl<'a> PolyMatrix<'a> for PolyMatrixNTT<'a> {
