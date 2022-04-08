@@ -29,6 +29,8 @@ pub struct Params {
     pub expand_queries: bool,
     pub db_dim_1: usize,
     pub db_dim_2: usize,
+    pub instances: usize,
+    pub db_item_size: usize,
 }
 
 impl Params {
@@ -95,6 +97,8 @@ impl Params {
         expand_queries: bool,
         db_dim_1: usize,
         db_dim_2: usize,
+        instances: usize,
+        db_item_size: usize,
     ) -> Self {
         let poly_len_log2 = log2(poly_len as u64) as usize;
         let crt_count = moduli.len();
@@ -125,6 +129,8 @@ impl Params {
             expand_queries,
             db_dim_1,
             db_dim_2,
+            instances,
+            db_item_size,
         }
     }
 }

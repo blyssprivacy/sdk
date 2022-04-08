@@ -32,15 +32,17 @@ fn send_api_req_vec(path: &str, data: Vec<u8>) -> Option<Vec<u8>> {
 fn main() {
     let cfg_expand = r#"
         {'n': 2,
-        'nu_1': 9,
+        'nu_1': 10,
         'nu_2': 6,
-        'p': 256,
-        'q_prime_bits': 20,
-        's_e': 87.62938774292914,
-        't_GSW': 8,
+        'p': 512,
+        'q_prime_bits': 21,
+        's_e': 85.83255142749422,
+        't_GSW': 10,
         't_conv': 4,
-        't_exp': 8,
-        't_exp_right': 56}
+        't_exp': 16,
+        't_exp_right': 56,
+        'instances': 11,
+        'db_item_size': 100000 }
     "#;
     let cfg_direct = r#"
         {'kinda_direct_upload': 1,
@@ -55,7 +57,7 @@ fn main() {
         't_exp': 56,
         't_exp_right': 56}
     "#;
-    let cfg = cfg_direct;
+    let cfg = cfg_expand;
     let cfg = cfg.replace("'", "\"");
     let params = params_from_json(&cfg);
 
@@ -84,7 +86,8 @@ fn main() {
     let duration = now.elapsed().as_millis();
     println!("duration of query processing is {} ms", duration);
     println!("query_resp len {}", query_resp.len());
+    // println!("query_resp {:x?}", query_resp);
 
-    let _result = c.decode_response(query_resp.as_slice());
-    // println!("{:x?}", result);
+    let result = c.decode_response(query_resp.as_slice());
+    println!("{:x?}", result);
 }

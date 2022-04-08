@@ -1,14 +1,23 @@
 <html>
   <head>
     <meta content="text/html;charset=utf-8" http-equiv="Content-Type"/>
+    <link href="css/reset.css" rel="stylesheet" />
+    <link href="css/style.css" rel="stylesheet" />
   </head>
   <body>
     <h1>Spiral Demo</h1>
-    <input id="query_idx" type="text" />
-    <input id="make_query" type="button" value="&gt;" />
 
-    <pre id="output"></pre>
+    <div class="searchsuperbox">
+      <div class="searchandsuggestions">
+        <input type="text" class="searchbox" placeholder="Article title" />
+      </div>
+      <input id="make_query" type="button" value="&gt;" />
+    </div>
 
+    <div id="output" class="articles"></div>
+
+    <!-- <script type="module" src="js/bz2.js"></script>
+    <script type="module" src="js/wtf_wikipedia-client.min.js"></script> -->
     <script type="module" src="main.js"></script>
   </body>
 </html>

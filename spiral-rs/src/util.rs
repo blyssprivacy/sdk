@@ -26,6 +26,8 @@ pub fn get_test_params() -> Params {
         true,
         9,
         6,
+        1,
+        2048
     )
 }
 
@@ -49,7 +51,9 @@ pub const fn get_empty_params() -> Params {
         t_gsw: 0, 
         expand_queries: false, 
         db_dim_1: 0, 
-        db_dim_2: 0 
+        db_dim_2: 0,
+        instances: 0,
+        db_item_size: 0,
     }
 }
 
@@ -58,6 +62,8 @@ pub fn params_from_json(cfg: &str) -> Params {
     let n = v["n"].as_u64().unwrap() as usize;
     let db_dim_1 = v["nu_1"].as_u64().unwrap() as usize;
     let db_dim_2 = v["nu_2"].as_u64().unwrap() as usize;
+    let instances = v["instances"].as_u64().unwrap_or(1) as usize;
+    let db_item_size = v["db_item_size"].as_u64().unwrap_or(1) as usize;
     let p = v["p"].as_u64().unwrap();
     let q2_bits = v["q_prime_bits"].as_u64().unwrap();
     let t_gsw = v["t_GSW"].as_u64().unwrap() as usize;
@@ -79,6 +85,8 @@ pub fn params_from_json(cfg: &str) -> Params {
         do_expansion,
         db_dim_1,
         db_dim_2,
+        instances,
+        db_item_size,
     )
 }
 
@@ -132,7 +140,9 @@ mod test {
             't_GSW': 8,
             't_conv': 4,
             't_exp': 8,
-            't_exp_right': 56}
+            't_exp_right': 56,
+            'instances': 1,
+            'db_item_size': 2048 }
         "#;
         let cfg = cfg.replace("'", "\"");
         let b = params_from_json(&cfg);
@@ -150,23 +160,28 @@ mod test {
             true,
             9,
             6,
+            1,
+            2048
         );
         assert_eq!(b, c);
     }
 
     #[test]
     fn test_read_write_arbitrary_bits() {
-        let mut data = vec![0u8; 1024];
-        let num_bits = 5;
+        let len = 4096;
+        let num_bits = 9;
+        let mut data = vec![0u8; len];
+        let scaled_len = len * 8 / num_bits - 64;
         let mut bit_offs = 0;
-        for i in 0..1000 {
-            write_arbitrary_bits(data.as_mut_slice(), i % 32, bit_offs, num_bits);
+        let get_from = |i: usize| -> u64 { ((i * 7 + 13) % (1 << num_bits)) as u64 };
+        for i in 0..scaled_len {
+            write_arbitrary_bits(data.as_mut_slice(), get_from(i), bit_offs, num_bits);
             bit_offs += num_bits;
         }
         bit_offs = 0;
-        for i in 0..1000 {
+        for i in 0..scaled_len {
             let val = read_arbitrary_bits(data.as_slice(), bit_offs, num_bits);
-            assert_eq!(val, i % 32);
+            assert_eq!(val, get_from(i));
             bit_offs += num_bits;
         }
     }

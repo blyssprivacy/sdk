@@ -50,17 +50,18 @@ pub fn initialize(json_params: Option<String>) -> WrappedClient {
     dg_seems_okay();
     // spiral_rs::ntt::test::ntt_correct();
     let cfg = r#"
-        {'kinda_direct_upload': 1,
-        'n': 5,
-        'nu_1': 11,
-        'nu_2': 3,
-        'p': 65536,
-        'q_prime_bits': 27,
-        's_e': 57.793748020122216,
-        't_GSW': 3,
-        't_conv': 56,
-        't_exp': 56,
-        't_exp_right': 56}
+        {'n': 2,
+        'nu_1': 10,
+        'nu_2': 6,
+        'p': 512,
+        'q_prime_bits': 21,
+        's_e': 85.83255142749422,
+        't_GSW': 10,
+        't_conv': 4,
+        't_exp': 16,
+        't_exp_right': 56,
+        'instances': 11,
+        'db_item_size': 100000 }
     "#;
     let mut cfg = cfg.replace("'", "\"");
     if json_params.is_some() {

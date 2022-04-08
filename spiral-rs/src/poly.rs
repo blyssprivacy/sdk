@@ -1,3 +1,4 @@
+use core::num;
 #[cfg(target_feature = "avx2")]
 use std::arch::x86_64::*;
 
@@ -146,16 +147,21 @@ impl<'a> PolyMatrixRaw<'a> {
         to_ntt_alloc(&self)
     }
 
-    pub fn to_vec(&self, modulus_bits: usize) -> Vec<u8> {
-        let params = self.params;
-        let sz_bits = self.rows * self.cols * params.poly_len * modulus_bits;
-        let sz_bytes = f64::ceil((sz_bits as f64) / 8f64) as usize;
+    pub fn to_vec(&self, modulus_bits: usize, num_coeffs: usize) -> Vec<u8> {
+        let sz_bits = self.rows * self.cols * num_coeffs * modulus_bits;
+        let sz_bytes = f64::ceil((sz_bits as f64) / 8f64) as usize + 32;
         let sz_bytes_roundup_16 = ((sz_bytes + 15) / 16) * 16;
         let mut data = vec![0u8; sz_bytes_roundup_16];
         let mut bit_offs = 0;
-        for i in 0..self.rows * self.cols * params.poly_len {
-            write_arbitrary_bits(data.as_mut_slice(), self.data[i], bit_offs, modulus_bits);
-            bit_offs += modulus_bits;
+        for r in 0..self.rows {
+            for c in 0..self.cols {
+                for z in 0..num_coeffs {
+                    write_arbitrary_bits(data.as_mut_slice(), self.get_poly(r,c)[z], bit_offs, modulus_bits);
+                    bit_offs += modulus_bits;
+                }
+                // round bit_offs down to nearest byte boundary
+                bit_offs = (bit_offs / 8) * 8
+            }
         }
         data
     }
@@ -557,5 +563,25 @@ mod test {
         let m3_ntt = &m1_ntt * &m2_ntt;
         let m3 = from_ntt_alloc(&m3_ntt);
         assert_eq!(m3.get_poly(0, 0)[2], 700);
+    }
+
+    #[test]
+    fn to_vec_correctness() {
+        let params = get_params();
+        let mut m1 = PolyMatrixRaw::zero(&params, 1, 1);
+        for i in 0..params.poly_len {
+            m1.data[i] = 1;
+        }
+        let modulus_bits = 9;
+        let v = m1.to_vec(modulus_bits, params.poly_len);
+        for i in 0..v.len() {
+            println!("{:?}", v[i]);
+        }
+        let mut bit_offs = 0;
+        for i in 0..params.poly_len {
+            let val = read_arbitrary_bits(v.as_slice(), bit_offs, modulus_bits);
+            assert_eq!(m1.data[i], val);
+            bit_offs += modulus_bits;
+        }
     }
 }
