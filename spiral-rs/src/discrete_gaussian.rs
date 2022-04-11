@@ -1,5 +1,6 @@
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
+use rand::Rng;
 use rand::{rngs::ThreadRng, thread_rng};
 
 use crate::params::*;
@@ -8,14 +9,14 @@ use std::f64::consts::PI;
 
 pub const NUM_WIDTHS: usize = 8;
 
-pub struct DiscreteGaussian {
+pub struct DiscreteGaussian<'a, T: Rng> {
     choices: Vec<i64>,
     dist: WeightedIndex<f64>,
-    rng: ThreadRng,
+    pub rng: &'a mut T,
 }
 
-impl DiscreteGaussian {
-    pub fn init(params: &Params) -> Self {
+impl<'a, T: Rng> DiscreteGaussian<'a, T> {
+    pub fn init(params: &'a Params, rng: &'a mut T) -> Self {
         let max_val = (params.noise_width * (NUM_WIDTHS as f64)).ceil() as i64;
         let mut choices = Vec::new();
         let mut table = vec![0f64; 0];
@@ -26,11 +27,7 @@ impl DiscreteGaussian {
         }
         let dist = WeightedIndex::new(&table).unwrap();
 
-        Self {
-            choices,
-            dist,
-            rng: thread_rng(),
-        }
+        Self { choices, dist, rng }
     }
 
     // FIXME: not constant-time
@@ -62,7 +59,8 @@ mod test {
     #[test]
     fn dg_seems_okay() {
         let params = get_test_params();
-        let mut dg = DiscreteGaussian::init(&params);
+        let mut rng = thread_rng();
+        let mut dg = DiscreteGaussian::init(&params, &mut rng);
         let mut v = Vec::new();
         let trials = 10000;
         let mut sum = 0;

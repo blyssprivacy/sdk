@@ -50,7 +50,7 @@ fn main() {
         'instances': 11,
         'db_item_size': 100000 }
     "#;
-    let cfg_direct = r#"
+    let _cfg_direct = r#"
         {'kinda_direct_upload': 1,
         'n': 5,
         'nu_1': 11,

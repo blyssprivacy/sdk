@@ -1,4 +1,3 @@
-use core::num;
 #[cfg(target_feature = "avx2")]
 use std::arch::x86_64::*;
 
@@ -20,6 +19,7 @@ pub trait PolyMatrix<'a> {
     fn num_words(&self) -> usize;
     fn zero(params: &'a Params, rows: usize, cols: usize) -> Self;
     fn random(params: &'a Params, rows: usize, cols: usize) -> Self;
+    fn random_rng<T: Rng>(params: &'a Params, rows: usize, cols: usize, rng: &mut T) -> Self;
     fn as_slice(&self) -> &[u64];
     fn as_mut_slice(&mut self) -> &mut [u64];
     fn zero_out(&mut self) {
@@ -99,8 +99,7 @@ impl<'a> PolyMatrix<'a> for PolyMatrixRaw<'a> {
             data,
         }
     }
-    fn random(params: &'a Params, rows: usize, cols: usize) -> Self {
-        let rng = rand::thread_rng();
+    fn random_rng<T: Rng>(params: &'a Params, rows: usize, cols: usize, rng: &mut T) -> Self {
         let mut iter = rng.sample_iter(&Standard);
         let mut out = PolyMatrixRaw::zero(params, rows, cols);
         for r in 0..rows {
@@ -112,6 +111,10 @@ impl<'a> PolyMatrix<'a> for PolyMatrixRaw<'a> {
             }
         }
         out
+    }
+    fn random(params: &'a Params, rows: usize, cols: usize) -> Self {
+        let mut rng = rand::thread_rng();
+        Self::random_rng(params, rows, cols, &mut rng)
     }
     fn pad_top(&self, pad_rows: usize) -> Self {
         let mut padded = Self::zero(self.params, self.rows + pad_rows, self.cols);
@@ -137,7 +140,12 @@ impl<'a> PolyMatrixRaw<'a> {
         }
     }
 
-    pub fn noise(params: &'a Params, rows: usize, cols: usize, dg: &mut DiscreteGaussian) -> Self {
+    pub fn noise<T: Rng>(
+        params: &'a Params,
+        rows: usize,
+        cols: usize,
+        dg: &mut DiscreteGaussian<T>,
+    ) -> Self {
         let mut out = PolyMatrixRaw::zero(params, rows, cols);
         dg.sample_matrix(&mut out);
         out
@@ -210,8 +218,7 @@ impl<'a> PolyMatrix<'a> for PolyMatrixNTT<'a> {
             data,
         }
     }
-    fn random(params: &'a Params, rows: usize, cols: usize) -> Self {
-        let rng = rand::thread_rng();
+    fn random_rng<T: Rng>(params: &'a Params, rows: usize, cols: usize, rng: &mut T) -> Self {
         let mut iter = rng.sample_iter(&Standard);
         let mut out = PolyMatrixNTT::zero(params, rows, cols);
         for r in 0..rows {
@@ -226,6 +233,10 @@ impl<'a> PolyMatrix<'a> for PolyMatrixNTT<'a> {
             }
         }
         out
+    }
+    fn random(params: &'a Params, rows: usize, cols: usize) -> Self {
+        let mut rng = rand::thread_rng();
+        Self::random_rng(params, rows, cols, &mut rng)
     }
     fn pad_top(&self, pad_rows: usize) -> Self {
         let mut padded = Self::zero(self.params, self.rows + pad_rows, self.cols);

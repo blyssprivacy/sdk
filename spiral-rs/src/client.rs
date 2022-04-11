@@ -1,6 +1,8 @@
 use crate::{
     arith::*, discrete_gaussian::*, gadget::*, number_theory::*, params::*, poly::*, util::*,
 };
+use rand::rngs::StdRng;
+use rand::{thread_rng, Rng};
 use std::iter::once;
 
 fn serialize_polymatrix(vec: &mut Vec<u8>, a: &PolyMatrixRaw) {
@@ -106,13 +108,13 @@ impl<'a> Query<'a> {
     }
 }
 
-pub struct Client<'a> {
+pub struct Client<'a, TRng: Rng> {
     params: &'a Params,
     sk_gsw: PolyMatrixRaw<'a>,
     sk_reg: PolyMatrixRaw<'a>,
     sk_gsw_full: PolyMatrixRaw<'a>,
     sk_reg_full: PolyMatrixRaw<'a>,
-    dg: DiscreteGaussian,
+    dg: DiscreteGaussian<'a, TRng>,
     g: usize,
     stop_round: usize,
 }
@@ -145,15 +147,15 @@ fn params_with_moduli(params: &Params, moduli: &Vec<u64>) -> Params {
     )
 }
 
-impl<'a> Client<'a> {
-    pub fn init(params: &'a Params) -> Self {
+impl<'a, TRng: Rng> Client<'a, TRng> {
+    pub fn init(params: &'a Params, rng: &'a mut TRng) -> Self {
         let sk_gsw_dims = params.get_sk_gsw();
         let sk_reg_dims = params.get_sk_reg();
         let sk_gsw = PolyMatrixRaw::zero(params, sk_gsw_dims.0, sk_gsw_dims.1);
         let sk_reg = PolyMatrixRaw::zero(params, sk_reg_dims.0, sk_reg_dims.1);
         let sk_gsw_full = matrix_with_identity(&sk_gsw);
         let sk_reg_full = matrix_with_identity(&sk_reg);
-        let dg = DiscreteGaussian::init(params);
+        let dg = DiscreteGaussian::init(params, rng);
 
         let further_dims = params.db_dim_2;
         let num_expanded = 1usize << params.db_dim_1;
@@ -172,11 +174,15 @@ impl<'a> Client<'a> {
         }
     }
 
+    pub fn get_rng(&mut self) -> &mut TRng {
+        &mut self.dg.rng
+    }
+
     fn get_fresh_gsw_public_key(&mut self, m: usize) -> PolyMatrixRaw<'a> {
         let params = self.params;
         let n = params.n;
 
-        let a = PolyMatrixRaw::random(params, 1, m);
+        let a = PolyMatrixRaw::random_rng(params, 1, m, self.get_rng());
         let e = PolyMatrixRaw::noise(params, n, m, &mut self.dg);
         let a_inv = -&a;
         let b_p = &self.sk_gsw.ntt() * &a.ntt();
@@ -187,7 +193,7 @@ impl<'a> Client<'a> {
 
     fn get_regev_sample(&mut self) -> PolyMatrixNTT<'a> {
         let params = self.params;
-        let a = PolyMatrixRaw::random(params, 1, 1);
+        let a = PolyMatrixRaw::random_rng(params, 1, 1, self.get_rng());
         let e = PolyMatrixRaw::noise(params, 1, 1, &mut self.dg);
         let b_p = &self.sk_reg.ntt() * &a.ntt();
         let b = &e.ntt() + &b_p;
@@ -489,5 +495,81 @@ impl<'a> Client<'a> {
         let logp = log2(params.pt_modulus);
         let modp_words_per_chunk = f64::ceil((bytes_per_chunk * 8) as f64 / logp as f64) as usize;
         result.to_vec(p_bits as usize, modp_words_per_chunk)
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use rand::SeedableRng;
+
+    use super::*;
+
+    fn get_seed() -> [u8; 32] {
+        [
+            1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5,
+            6, 7, 8,
+        ]
+    }
+
+    fn get_seeded_rng() -> StdRng {
+        StdRng::from_seed(get_seed())
+    }
+
+    fn assert_first8(m: &[u64], gold: [u64; 8]) {
+        let got: [u64; 8] = m[0..8].try_into().unwrap();
+        assert_eq!(got, gold);
+    }
+
+    fn get_params() -> Params {
+        Params::init(
+            2048,
+            &vec![268369921u64, 249561089u64],
+            6.4,
+            2,
+            256,
+            20,
+            4,
+            4,
+            4,
+            4,
+            true,
+            9,
+            6,
+            1,
+            2048,
+        )
+    }
+
+    #[test]
+    fn init_is_correct() {
+        let params = get_params();
+        let mut rng = thread_rng();
+        let client = Client::init(&params, &mut rng);
+
+        assert_eq!(client.stop_round, 6);
+        assert_eq!(client.g, 10);
+        assert_eq!(*client.params, params);
+    }
+
+    #[test]
+    fn keygen_is_correct() {
+        let params = get_params();
+        let mut seeded_rng = get_seeded_rng();
+        let mut client = Client::init(&params, &mut seeded_rng);
+
+        let public_params = client.generate_keys();
+
+        assert_first8(
+            &public_params.v_conversion.unwrap()[0].data,
+            [
+                253586619, 247235120, 141892996, 163163429, 15531298, 200914775, 125109567,
+                75889562,
+            ],
+        );
+
+        assert_first8(
+            &client.sk_gsw.data,
+            [1, 5, 0, 3, 1, 3, 66974689739603967, 3],
+        );
     }
 }
