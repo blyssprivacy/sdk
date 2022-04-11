@@ -18,10 +18,10 @@ fn serialize_vec_polymatrix(vec: &mut Vec<u8>, a: &Vec<PolyMatrixRaw>) {
 }
 
 pub struct PublicParameters<'a> {
-    v_packing: Vec<PolyMatrixNTT<'a>>, // Ws
-    v_expansion_left: Option<Vec<PolyMatrixNTT<'a>>>,
-    v_expansion_right: Option<Vec<PolyMatrixNTT<'a>>>,
-    v_conversion: Option<Vec<PolyMatrixNTT<'a>>>, // V
+    pub v_packing: Vec<PolyMatrixNTT<'a>>, // Ws
+    pub v_expansion_left: Option<Vec<PolyMatrixNTT<'a>>>,
+    pub v_expansion_right: Option<Vec<PolyMatrixNTT<'a>>>,
+    pub v_conversion: Option<Vec<PolyMatrixNTT<'a>>>, // V
 }
 
 impl<'a> PublicParameters<'a> {
@@ -115,8 +115,8 @@ pub struct Client<'a, TRng: Rng> {
     sk_gsw_full: PolyMatrixRaw<'a>,
     sk_reg_full: PolyMatrixRaw<'a>,
     dg: DiscreteGaussian<'a, TRng>,
-    g: usize,
-    stop_round: usize,
+    pub g: usize,
+    pub stop_round: usize,
 }
 
 fn matrix_with_identity<'a>(p: &PolyMatrixRaw<'a>) -> PolyMatrixRaw<'a> {
@@ -221,7 +221,7 @@ impl<'a, TRng: Rng> Client<'a, TRng> {
         res
     }
 
-    fn encrypt_matrix_reg(&mut self, a: &PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
+    pub fn encrypt_matrix_reg(&mut self, a: &PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
         let m = a.cols;
         let p = self.get_fresh_reg_public_key(m);
         &p + &a.pad_top(1)
@@ -247,7 +247,7 @@ impl<'a, TRng: Rng> Client<'a, TRng> {
         res
     }
 
-    pub fn generate_keys(&mut self) -> PublicParameters {
+    pub fn generate_keys(&mut self) -> PublicParameters<'a> {
         let params = self.params;
         self.dg.sample_matrix(&mut self.sk_gsw);
         self.dg.sample_matrix(&mut self.sk_reg);
@@ -500,20 +500,7 @@ impl<'a, TRng: Rng> Client<'a, TRng> {
 
 #[cfg(test)]
 mod test {
-    use rand::SeedableRng;
-
     use super::*;
-
-    fn get_seed() -> [u8; 32] {
-        [
-            1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5,
-            6, 7, 8,
-        ]
-    }
-
-    fn get_seeded_rng() -> StdRng {
-        StdRng::from_seed(get_seed())
-    }
 
     fn assert_first8(m: &[u64], gold: [u64; 8]) {
         let got: [u64; 8] = m[0..8].try_into().unwrap();
@@ -521,23 +508,7 @@ mod test {
     }
 
     fn get_params() -> Params {
-        Params::init(
-            2048,
-            &vec![268369921u64, 249561089u64],
-            6.4,
-            2,
-            256,
-            20,
-            4,
-            4,
-            4,
-            4,
-            true,
-            9,
-            6,
-            1,
-            2048,
-        )
+        get_short_keygen_params()
     }
 
     #[test]

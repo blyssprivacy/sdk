@@ -1,4 +1,5 @@
 use crate::params::*;
+use rand::{prelude::StdRng, SeedableRng};
 use serde_json::Value;
 
 pub fn calc_index(indices: &[usize], lengths: &[usize]) -> usize {
@@ -29,6 +30,37 @@ pub fn get_test_params() -> Params {
         1,
         2048,
     )
+}
+
+pub fn get_short_keygen_params() -> Params {
+    Params::init(
+        2048,
+        &vec![268369921u64, 249561089u64],
+        6.4,
+        2,
+        256,
+        20,
+        4,
+        4,
+        4,
+        4,
+        true,
+        9,
+        6,
+        1,
+        2048,
+    )
+}
+
+pub fn get_seed() -> [u8; 32] {
+    [
+        1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6,
+        7, 8,
+    ]
+}
+
+pub fn get_seeded_rng() -> StdRng {
+    StdRng::from_seed(get_seed())
 }
 
 pub const fn get_empty_params() -> Params {

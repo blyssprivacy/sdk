@@ -1,4 +1,4 @@
-use crate::{arith::*, ntt::*, number_theory::*};
+use crate::{arith::*, ntt::*, number_theory::*, poly::*};
 
 pub static Q2_VALUES: [u64; 37] = [
     0,
@@ -80,6 +80,17 @@ impl Params {
     }
     pub fn get_ntt_inverse_prime_table(&self, i: usize) -> &[u64] {
         self.ntt_tables[i][3].as_slice()
+    }
+
+    pub fn get_v_neg1(&self) -> Vec<PolyMatrixNTT> {
+        let mut v_neg1 = Vec::new();
+        for i in 0..self.poly_len_log2 {
+            let idx = self.poly_len - (1 << i);
+            let mut ng1 = PolyMatrixRaw::zero(&self, 1, 1);
+            ng1.data[idx] = 1;
+            v_neg1.push((-&ng1).ntt());
+        }
+        v_neg1
     }
 
     pub fn get_sk_gsw(&self) -> (usize, usize) {

@@ -50,6 +50,8 @@ pub trait PolyMatrix<'a> {
             }
         }
     }
+
+    fn submatrix(&self, target_row: usize, target_col: usize, rows: usize, cols: usize) -> Self;
     fn pad_top(&self, pad_rows: usize) -> Self;
 }
 
@@ -120,6 +122,21 @@ impl<'a> PolyMatrix<'a> for PolyMatrixRaw<'a> {
         let mut padded = Self::zero(self.params, self.rows + pad_rows, self.cols);
         padded.copy_into(&self, pad_rows, 0);
         padded
+    }
+    fn submatrix(&self, target_row: usize, target_col: usize, rows: usize, cols: usize) -> Self {
+        let mut m = Self::zero(self.params, rows, cols);
+        assert!(target_row < self.rows);
+        assert!(target_col < self.cols);
+        assert!(target_row + rows <= self.rows);
+        assert!(target_col + cols <= self.cols);
+        for r in 0..rows {
+            for c in 0..cols {
+                let pol_src = self.get_poly(target_row + r, target_col + c);
+                let pol_dst = m.get_poly_mut(r, c);
+                pol_dst.copy_from_slice(pol_src);
+            }
+        }
+        m
     }
 }
 
@@ -242,6 +259,22 @@ impl<'a> PolyMatrix<'a> for PolyMatrixNTT<'a> {
         let mut padded = Self::zero(self.params, self.rows + pad_rows, self.cols);
         padded.copy_into(&self, pad_rows, 0);
         padded
+    }
+
+    fn submatrix(&self, target_row: usize, target_col: usize, rows: usize, cols: usize) -> Self {
+        let mut m = Self::zero(self.params, rows, cols);
+        assert!(target_row < self.rows);
+        assert!(target_col < self.cols);
+        assert!(target_row + rows <= self.rows);
+        assert!(target_col + cols <= self.cols);
+        for r in 0..rows {
+            for c in 0..cols {
+                let pol_src = self.get_poly(target_row + r, target_col + c);
+                let pol_dst = m.get_poly_mut(r, c);
+                pol_dst.copy_from_slice(pol_src);
+            }
+        }
+        m
     }
 }
 

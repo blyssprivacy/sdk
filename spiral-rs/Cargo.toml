@@ -16,6 +16,10 @@ criterion = "0.3"
 name = "ntt"
 harness = false
 
+[[bench]]
+name = "server"
+harness = false
+
 [profile.release]
 lto = "fat"
 codegen-units = 1
