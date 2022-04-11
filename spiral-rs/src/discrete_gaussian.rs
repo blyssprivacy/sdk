@@ -1,6 +1,6 @@
-use rand::prelude::Distribution;
-use rand::{thread_rng, rngs::ThreadRng};
 use rand::distributions::WeightedIndex;
+use rand::prelude::Distribution;
+use rand::{rngs::ThreadRng, thread_rng};
 
 use crate::params::*;
 use crate::poly::*;
@@ -11,7 +11,7 @@ pub const NUM_WIDTHS: usize = 8;
 pub struct DiscreteGaussian {
     choices: Vec<i64>,
     dist: WeightedIndex<f64>,
-    rng: ThreadRng
+    rng: ThreadRng,
 }
 
 impl DiscreteGaussian {
@@ -19,7 +19,7 @@ impl DiscreteGaussian {
         let max_val = (params.noise_width * (NUM_WIDTHS as f64)).ceil() as i64;
         let mut choices = Vec::new();
         let mut table = vec![0f64; 0];
-        for i in -max_val..max_val+1 {
+        for i in -max_val..max_val + 1 {
             let p_val = f64::exp(-PI * f64::powi(i as f64, 2) / f64::powi(params.noise_width, 2));
             choices.push(i);
             table.push(p_val);
@@ -29,7 +29,7 @@ impl DiscreteGaussian {
         Self {
             choices,
             dist,
-            rng: thread_rng()
+            rng: thread_rng(),
         }
     }
 

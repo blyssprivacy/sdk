@@ -1,5 +1,5 @@
 use crate::params::*;
-use serde_json::{Value};
+use serde_json::Value;
 
 pub fn calc_index(indices: &[usize], lengths: &[usize]) -> usize {
     let mut idx = 0usize;
@@ -13,8 +13,8 @@ pub fn calc_index(indices: &[usize], lengths: &[usize]) -> usize {
 
 pub fn get_test_params() -> Params {
     Params::init(
-        2048, 
-        &vec![268369921u64, 249561089u64], 
+        2048,
+        &vec![268369921u64, 249561089u64],
         6.4,
         2,
         256,
@@ -27,30 +27,30 @@ pub fn get_test_params() -> Params {
         9,
         6,
         1,
-        2048
+        2048,
     )
 }
 
 pub const fn get_empty_params() -> Params {
-    Params { 
-        poly_len: 0, 
-        poly_len_log2: 0, 
-        ntt_tables: Vec::new(), 
-        scratch: Vec::new(), 
-        crt_count: 0, 
-        moduli: Vec::new(), 
-        modulus: 0, 
-        modulus_log2: 0, 
-        noise_width: 0f64, 
-        n: 0, 
-        pt_modulus: 0, 
-        q2_bits: 0, 
-        t_conv: 0, 
-        t_exp_left: 0, 
-        t_exp_right: 0, 
-        t_gsw: 0, 
-        expand_queries: false, 
-        db_dim_1: 0, 
+    Params {
+        poly_len: 0,
+        poly_len_log2: 0,
+        ntt_tables: Vec::new(),
+        scratch: Vec::new(),
+        crt_count: 0,
+        moduli: Vec::new(),
+        modulus: 0,
+        modulus_log2: 0,
+        noise_width: 0f64,
+        n: 0,
+        pt_modulus: 0,
+        q2_bits: 0,
+        t_conv: 0,
+        t_exp_left: 0,
+        t_exp_right: 0,
+        t_gsw: 0,
+        expand_queries: false,
+        db_dim_1: 0,
         db_dim_2: 0,
         instances: 0,
         db_item_size: 0,
@@ -72,8 +72,8 @@ pub fn params_from_json(cfg: &str) -> Params {
     let t_exp_right = v["t_exp_right"].as_u64().unwrap() as usize;
     let do_expansion = v.get("kinda_direct_upload").is_none();
     Params::init(
-        2048, 
-        &vec![268369921u64, 249561089u64], 
+        2048,
+        &vec![268369921u64, 249561089u64],
         6.4,
         n,
         p,
@@ -147,8 +147,8 @@ mod test {
         let cfg = cfg.replace("'", "\"");
         let b = params_from_json(&cfg);
         let c = Params::init(
-            2048, 
-            &vec![268369921u64, 249561089u64], 
+            2048,
+            &vec![268369921u64, 249561089u64],
             6.4,
             2,
             256,
@@ -161,7 +161,7 @@ mod test {
             9,
             6,
             1,
-            2048
+            2048,
         );
         assert_eq!(b, c);
     }

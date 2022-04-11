@@ -1,14 +1,16 @@
 use serde_json::Value;
-use spiral_rs::util::*;
 use spiral_rs::client::*;
+use spiral_rs::util::*;
 use std::env;
 use std::time::Instant;
 
 fn send_api_req_text(path: &str, data: Vec<u8>) -> Option<String> {
     let client = reqwest::blocking::Client::builder()
         .timeout(None)
-        .build().unwrap();
-    client.post(format!("https://spiralwiki.com:8088{}", path))
+        .build()
+        .unwrap();
+    client
+        .post(format!("https://spiralwiki.com:8088{}", path))
         .body(data)
         .send()
         .ok()?
@@ -19,14 +21,18 @@ fn send_api_req_text(path: &str, data: Vec<u8>) -> Option<String> {
 fn send_api_req_vec(path: &str, data: Vec<u8>) -> Option<Vec<u8>> {
     let client = reqwest::blocking::Client::builder()
         .timeout(None)
-        .build().unwrap();
-    Some(client.post(format!("https://spiralwiki.com:8088{}", path))
-        .body(data)
-        .send()
-        .ok()?
-        .bytes()
-        .ok()?
-        .to_vec())
+        .build()
+        .unwrap();
+    Some(
+        client
+            .post(format!("https://spiralwiki.com:8088{}", path))
+            .body(data)
+            .send()
+            .ok()?
+            .bytes()
+            .ok()?
+            .to_vec(),
+    )
 }
 
 fn main() {

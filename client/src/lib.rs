@@ -1,7 +1,7 @@
 mod utils;
 
+use spiral_rs::{client::*, discrete_gaussian::*, params::*, util::*};
 use wasm_bindgen::prelude::*;
-use spiral_rs::{params::*, util::*, client::*, discrete_gaussian::*};
 
 const UUID_V4_LEN: usize = 36;
 
@@ -19,7 +19,7 @@ macro_rules! console_log {
 // Avoids a lifetime in the return signature of bound Rust functions
 #[wasm_bindgen]
 pub struct WrappedClient {
-    client: Client<'static>
+    client: Client<'static>,
 }
 
 // Unsafe global with a static lifetime
@@ -74,8 +74,8 @@ pub fn initialize(json_params: Option<String>) -> WrappedClient {
         PARAMS = params_from_json(&cfg);
         client = Client::init(&PARAMS);
     }
-    
-    WrappedClient { client } 
+
+    WrappedClient { client }
 }
 
 #[wasm_bindgen]
@@ -92,7 +92,6 @@ pub fn generate_query(c: &mut WrappedClient, id: &str, idx_target: usize) -> Box
     full_query_buf.append(&mut query_buf);
     full_query_buf.into_boxed_slice()
 }
-
 
 #[wasm_bindgen]
 pub fn decode_response(c: &mut WrappedClient, data: Box<[u8]>) -> Box<[u8]> {

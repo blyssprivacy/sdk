@@ -1,10 +1,10 @@
-pub mod util;
 pub mod arith;
-pub mod number_theory;
 pub mod discrete_gaussian;
+pub mod number_theory;
+pub mod util;
 
-pub mod ntt;
 pub mod gadget;
+pub mod ntt;
 pub mod params;
 pub mod poly;
 

@@ -1,7 +1,7 @@
+use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use rand::Rng;
 use spiral_rs::ntt::*;
 use spiral_rs::util::*;
-use rand::Rng;
-use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 fn criterion_benchmark(c: &mut Criterion) {
     let params = get_test_params();
@@ -14,8 +14,12 @@ fn criterion_benchmark(c: &mut Criterion) {
             v1[idx] = val % params.moduli[i];
         }
     }
-    c.bench_function("nttf 2048", |b| b.iter(|| ntt_forward(black_box(&params), black_box(&mut v1))));
-    c.bench_function("ntti 2048", |b| b.iter(|| ntt_inverse(black_box(&params), black_box(&mut v1))));
+    c.bench_function("nttf 2048", |b| {
+        b.iter(|| ntt_forward(black_box(&params), black_box(&mut v1)))
+    });
+    c.bench_function("ntti 2048", |b| {
+        b.iter(|| ntt_inverse(black_box(&params), black_box(&mut v1)))
+    });
 }
 
 criterion_group!(benches, criterion_benchmark);

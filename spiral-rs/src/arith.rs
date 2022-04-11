@@ -94,10 +94,10 @@ pub fn recenter(val: u64, from_modulus: u64, to_modulus: u64) -> u64 {
     let to_modulus_i64 = to_modulus as i64;
 
     let mut a_val = val as i64;
-    if val >= from_modulus/2 {
+    if val >= from_modulus / 2 {
         a_val -= from_modulus_i64;
     }
-    a_val = a_val + (from_modulus_i64/to_modulus_i64)*to_modulus_i64 + 2*to_modulus_i64;
+    a_val = a_val + (from_modulus_i64 / to_modulus_i64) * to_modulus_i64 + 2 * to_modulus_i64;
     a_val %= to_modulus_i64;
     a_val as u64
 }

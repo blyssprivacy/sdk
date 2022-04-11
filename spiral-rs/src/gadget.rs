@@ -1,8 +1,10 @@
-use crate::{poly::*, params::*};
+use crate::{params::*, poly::*};
 
-pub fn get_bits_per(params: &Params, dim: usize) -> usize{
+pub fn get_bits_per(params: &Params, dim: usize) -> usize {
     let modulus_log2 = params.modulus_log2;
-    if dim as u64 == modulus_log2 { return 1; }
+    if dim as u64 == modulus_log2 {
+        return 1;
+    }
     ((modulus_log2 as f64) / (dim as f64)).floor() as usize + 1
 }
 

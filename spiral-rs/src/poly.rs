@@ -2,12 +2,12 @@ use core::num;
 #[cfg(target_feature = "avx2")]
 use std::arch::x86_64::*;
 
-use std::ops::{Add, Mul, Neg};
-use std::cell::RefCell;
-use rand::Rng;
 use rand::distributions::Standard;
+use rand::Rng;
+use std::cell::RefCell;
+use std::ops::{Add, Mul, Neg};
 
-use crate::{arith::*, params::*, ntt::*, util::*, discrete_gaussian::*};
+use crate::{arith::*, discrete_gaussian::*, ntt::*, params::*, util::*};
 
 const SCRATCH_SPACE: usize = 8192;
 thread_local!(static SCRATCH: RefCell<Vec<u64>> = RefCell::new(vec![0u64; SCRATCH_SPACE]));
@@ -156,7 +156,12 @@ impl<'a> PolyMatrixRaw<'a> {
         for r in 0..self.rows {
             for c in 0..self.cols {
                 for z in 0..num_coeffs {
-                    write_arbitrary_bits(data.as_mut_slice(), self.get_poly(r,c)[z], bit_offs, modulus_bits);
+                    write_arbitrary_bits(
+                        data.as_mut_slice(),
+                        self.get_poly(r, c)[z],
+                        bit_offs,
+                        modulus_bits,
+                    );
                     bit_offs += modulus_bits;
                 }
                 // round bit_offs down to nearest byte boundary
@@ -287,16 +292,16 @@ pub fn multiply_add_poly_avx(params: &Params, res: &mut [u64], a: &[u64], b: &[u
     for c in 0..params.crt_count {
         for i in (0..params.poly_len).step_by(4) {
             unsafe {
-                let p_x = &a[c*params.poly_len + i] as *const u64;
-                let p_y = &b[c*params.poly_len + i] as *const u64;
-                let p_z = &mut res[c*params.poly_len + i] as *mut u64;
+                let p_x = &a[c * params.poly_len + i] as *const u64;
+                let p_y = &b[c * params.poly_len + i] as *const u64;
+                let p_z = &mut res[c * params.poly_len + i] as *mut u64;
                 let x = _mm256_loadu_si256(p_x as *const __m256i);
                 let y = _mm256_loadu_si256(p_y as *const __m256i);
                 let z = _mm256_loadu_si256(p_z as *const __m256i);
 
                 let product = _mm256_mul_epu32(x, y);
                 let out = _mm256_add_epi64(z, product);
-                
+
                 _mm256_storeu_si256(p_z as *mut __m256i, out);
             }
         }
@@ -306,7 +311,7 @@ pub fn multiply_add_poly_avx(params: &Params, res: &mut [u64], a: &[u64], b: &[u
 pub fn modular_reduce(params: &Params, res: &mut [u64]) {
     for c in 0..params.crt_count {
         for i in 0..params.poly_len {
-            res[c*params.poly_len + i] %= params.moduli[c];
+            res[c * params.poly_len + i] %= params.moduli[c];
         }
     }
 }
@@ -320,7 +325,7 @@ pub fn multiply(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatrixNTT) {
     let params = res.params;
     for i in 0..a.rows {
         for j in 0..b.cols {
-            for z in 0..params.poly_len*params.crt_count {
+            for z in 0..params.poly_len * params.crt_count {
                 res.get_poly_mut(i, j)[z] = 0;
             }
             for k in 0..a.cols {
@@ -343,7 +348,7 @@ pub fn multiply(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatrixNTT) {
     let params = res.params;
     for i in 0..a.rows {
         for j in 0..b.cols {
-            for z in 0..params.poly_len*params.crt_count {
+            for z in 0..params.poly_len * params.crt_count {
                 res.get_poly_mut(i, j)[z] = 0;
             }
             let res_poly = res.get_poly_mut(i, j);
@@ -431,7 +436,10 @@ pub fn scalar_multiply(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatri
     }
 }
 
-pub fn scalar_multiply_alloc<'a>(a: &PolyMatrixNTT<'a>, b: &PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
+pub fn scalar_multiply_alloc<'a>(
+    a: &PolyMatrixNTT<'a>,
+    b: &PolyMatrixNTT<'a>,
+) -> PolyMatrixNTT<'a> {
     let mut res = PolyMatrixNTT::zero(b.params, b.rows, b.cols);
     scalar_multiply(&mut res, a, b);
     res
@@ -442,7 +450,6 @@ pub fn single_poly<'a>(params: &'a Params, val: u64) -> PolyMatrixRaw<'a> {
     res.get_poly_mut(0, 0)[0] = val;
     res
 }
-
 
 pub fn to_ntt(a: &mut PolyMatrixNTT, b: &PolyMatrixRaw) {
     let params = a.params;

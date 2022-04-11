@@ -1,11 +1,7 @@
 #[cfg(target_feature = "avx2")]
 use std::arch::x86_64::*;
 
-use crate::{
-    arith::*,
-    number_theory::*,
-    params::*,
-};
+use crate::{arith::*, number_theory::*, params::*};
 
 pub fn powers_of_primitive_root(root: u64, modulus: u64, poly_len_log2: usize) -> Vec<u64> {
     let poly_len = 1usize << poly_len_log2;
@@ -51,7 +47,7 @@ pub fn build_ntt_tables(poly_len: usize, moduli: &[u64]) -> Vec<Vec<Vec<u64>>> {
 
         let root_powers = powers_of_primitive_root(root, modulus, poly_len_log2);
         let scaled_root_powers = scale_powers_u32(modulus_as_u32, poly_len, root_powers.as_slice());
-        let mut inv_root_powers = powers_of_primitive_root(inv_root, modulus, poly_len_log2);        
+        let mut inv_root_powers = powers_of_primitive_root(inv_root, modulus, poly_len_log2);
         for i in 0..poly_len {
             inv_root_powers[i] = div2_uint_mod(inv_root_powers[i], modulus);
         }
@@ -74,7 +70,7 @@ pub fn ntt_forward(params: &Params, operand_overall: &mut [u64]) {
     let n = 1 << log_n;
 
     for coeff_mod in 0..params.crt_count {
-        let operand = &mut operand_overall[coeff_mod*n..coeff_mod*n+n];
+        let operand = &mut operand_overall[coeff_mod * n..coeff_mod * n + n];
 
         let forward_table = params.get_ntt_forward_table(coeff_mod);
         let forward_table_prime = params.get_ntt_forward_prime_table(coeff_mod);
@@ -88,27 +84,29 @@ pub fn ntt_forward(params: &Params, operand_overall: &mut [u64]) {
             let mut it = operand.chunks_exact_mut(2 * t);
 
             for i in 0..m {
-                let w = forward_table[m+i];
-                let w_prime = forward_table_prime[m+i];
-                
+                let w = forward_table[m + i];
+                let w_prime = forward_table_prime[m + i];
+
                 let op = it.next().unwrap();
 
                 for j in 0..t {
                     let x: u32 = op[j] as u32;
                     let y: u32 = op[t + j] as u32;
 
-                    let curr_x: u32 = x - (two_times_modulus_small * ((x >= two_times_modulus_small) as u32));
+                    let curr_x: u32 =
+                        x - (two_times_modulus_small * ((x >= two_times_modulus_small) as u32));
                     let q_tmp: u64 = ((y as u64) * (w_prime as u64)) >> 32u64;
                     let q_new = w * (y as u64) - q_tmp * (modulus_small as u64);
 
                     op[j] = curr_x as u64 + q_new;
-                    op[t + j] = curr_x as u64 +  ((two_times_modulus_small as u64) - q_new);
+                    op[t + j] = curr_x as u64 + ((two_times_modulus_small as u64) - q_new);
                 }
             }
         }
 
         for i in 0..n {
-            operand[i] -= ((operand[i] >= two_times_modulus_small as u64) as u64) * two_times_modulus_small as u64;
+            operand[i] -= ((operand[i] >= two_times_modulus_small as u64) as u64)
+                * two_times_modulus_small as u64;
             operand[i] -= ((operand[i] >= modulus_small as u64) as u64) * modulus_small as u64;
         }
     }
@@ -120,7 +118,7 @@ pub fn ntt_forward(params: &Params, operand_overall: &mut [u64]) {
     let n = 1 << log_n;
 
     for coeff_mod in 0..params.crt_count {
-        let operand = &mut operand_overall[coeff_mod*n..coeff_mod*n+n];
+        let operand = &mut operand_overall[coeff_mod * n..coeff_mod * n + n];
 
         let forward_table = params.get_ntt_forward_table(coeff_mod);
         let forward_table_prime = params.get_ntt_forward_prime_table(coeff_mod);
@@ -134,22 +132,23 @@ pub fn ntt_forward(params: &Params, operand_overall: &mut [u64]) {
             let mut it = operand.chunks_exact_mut(2 * t);
 
             for i in 0..m {
-                let w = forward_table[m+i];
-                let w_prime = forward_table_prime[m+i];
-                
+                let w = forward_table[m + i];
+                let w_prime = forward_table_prime[m + i];
+
                 let op = it.next().unwrap();
-                
+
                 if t < 4 {
                     for j in 0..t {
                         let x: u32 = op[j] as u32;
                         let y: u32 = op[t + j] as u32;
 
-                        let curr_x: u32 = x - (two_times_modulus_small * ((x >= two_times_modulus_small) as u32));
+                        let curr_x: u32 =
+                            x - (two_times_modulus_small * ((x >= two_times_modulus_small) as u32));
                         let q_tmp: u64 = ((y as u64) * (w_prime as u64)) >> 32u64;
                         let q_new = w * (y as u64) - q_tmp * (modulus_small as u64);
 
                         op[j] = curr_x as u64 + q_new;
-                        op[t + j] = curr_x as u64 +  ((two_times_modulus_small as u64) - q_new);
+                        op[t + j] = curr_x as u64 + ((two_times_modulus_small as u64) - q_new);
                     }
                 } else {
                     unsafe {
@@ -215,7 +214,7 @@ pub fn ntt_inverse(params: &Params, operand_overall: &mut [u64]) {
     for coeff_mod in 0..params.crt_count {
         let n = params.poly_len;
 
-        let operand = &mut operand_overall[coeff_mod*n..coeff_mod*n+n];
+        let operand = &mut operand_overall[coeff_mod * n..coeff_mod * n + n];
 
         let inverse_table = params.get_ntt_inverse_table(coeff_mod);
         let inverse_table_prime = params.get_ntt_inverse_prime_table(coeff_mod);
@@ -229,21 +228,21 @@ pub fn ntt_inverse(params: &Params, operand_overall: &mut [u64]) {
             let mut it = operand.chunks_exact_mut(2 * t);
 
             for i in 0..h {
-                let w = inverse_table[h+i];
-                let w_prime = inverse_table_prime[h+i];
+                let w = inverse_table[h + i];
+                let w_prime = inverse_table_prime[h + i];
 
                 let op = it.next().unwrap();
 
                 for j in 0..t {
                     let x = op[j];
                     let y = op[t + j];
-                    
+
                     let t_tmp = two_times_modulus - y + x;
                     let curr_x = x + y - (two_times_modulus * (((x << 1) >= t_tmp) as u64));
                     let h_tmp = (t_tmp * w_prime) >> 32;
 
-                    let res_x= (curr_x + (modulus * ((t_tmp & 1) as u64))) >> 1;
-                    let res_y= w * t_tmp - h_tmp * modulus;
+                    let res_x = (curr_x + (modulus * ((t_tmp & 1) as u64))) >> 1;
+                    let res_y = w * t_tmp - h_tmp * modulus;
 
                     op[j] = res_x;
                     op[t + j] = res_y;
@@ -263,7 +262,7 @@ pub fn ntt_inverse(params: &Params, operand_overall: &mut [u64]) {
     for coeff_mod in 0..params.crt_count {
         let n = params.poly_len;
 
-        let operand = &mut operand_overall[coeff_mod*n..coeff_mod*n+n];
+        let operand = &mut operand_overall[coeff_mod * n..coeff_mod * n + n];
 
         let inverse_table = params.get_ntt_inverse_table(coeff_mod);
         let inverse_table_prime = params.get_ntt_inverse_prime_table(coeff_mod);
@@ -276,22 +275,22 @@ pub fn ntt_inverse(params: &Params, operand_overall: &mut [u64]) {
             let mut it = operand.chunks_exact_mut(2 * t);
 
             for i in 0..h {
-                let w = inverse_table[h+i];
-                let w_prime = inverse_table_prime[h+i];
+                let w = inverse_table[h + i];
+                let w_prime = inverse_table_prime[h + i];
 
                 let op = it.next().unwrap();
-                
+
                 if t < 4 {
                     for j in 0..t {
                         let x = op[j];
                         let y = op[t + j];
-                        
+
                         let t_tmp = two_times_modulus - y + x;
                         let curr_x = x + y - (two_times_modulus * (((x << 1) >= t_tmp) as u64));
                         let h_tmp = (t_tmp * w_prime) >> 32;
 
-                        let res_x= (curr_x + (modulus * ((t_tmp & 1) as u64))) >> 1;
-                        let res_y= w * t_tmp - h_tmp * modulus;
+                        let res_x = (curr_x + (modulus * ((t_tmp & 1) as u64))) >> 1;
+                        let res_y = w * t_tmp - h_tmp * modulus;
 
                         op[j] = res_x;
                         op[t + j] = res_y;
@@ -304,9 +303,10 @@ pub fn ntt_inverse(params: &Params, operand_overall: &mut [u64]) {
                             let p_y = &mut op[j + t] as *mut u64;
                             let x = _mm256_loadu_si256(p_x as *const __m256i);
                             let y = _mm256_loadu_si256(p_y as *const __m256i);
-                            
+
                             let modulus_vec = _mm256_set1_epi64x(modulus as i64);
-                            let two_times_modulus_vec = _mm256_set1_epi64x(two_times_modulus as i64);
+                            let two_times_modulus_vec =
+                                _mm256_set1_epi64x(two_times_modulus as i64);
                             let mut t_tmp = _mm256_set1_epi64x(two_times_modulus as i64);
                             t_tmp = _mm256_sub_epi64(t_tmp, y);
                             t_tmp = _mm256_add_epi64(t_tmp, x);
@@ -320,7 +320,8 @@ pub fn ntt_inverse(params: &Params, operand_overall: &mut [u64]) {
                             h_tmp = _mm256_srli_epi64(h_tmp, 32);
 
                             let and_mask = _mm256_set_epi64x(1, 1, 1, 1);
-                            let eq_mask = _mm256_cmpeq_epi64(_mm256_and_si256(t_tmp, and_mask), and_mask);
+                            let eq_mask =
+                                _mm256_cmpeq_epi64(_mm256_and_si256(t_tmp, and_mask), and_mask);
                             let to_add = _mm256_and_si256(eq_mask, modulus_vec);
 
                             let new_x = _mm256_srli_epi64(_mm256_add_epi64(curr_x, to_add), 1);
@@ -348,8 +349,8 @@ pub fn ntt_inverse(params: &Params, operand_overall: &mut [u64]) {
 #[cfg(test)]
 mod test {
     use super::*;
-    use rand::Rng;
     use crate::util::*;
+    use rand::Rng;
 
     fn get_params() -> Params {
         get_test_params()
@@ -381,7 +382,7 @@ mod test {
     #[test]
     fn ntt_forward_correct() {
         let params = get_params();
-        let mut v1 = vec![0; 2*2048];
+        let mut v1 = vec![0; 2 * 2048];
         v1[0] = 100;
         v1[2048] = 100;
         ntt_forward(&params, v1.as_mut_slice());
@@ -392,7 +393,7 @@ mod test {
     #[test]
     fn ntt_inverse_correct() {
         let params = get_params();
-        let mut v1 = vec![100; 2*2048];
+        let mut v1 = vec![100; 2 * 2048];
         ntt_inverse(&params, v1.as_mut_slice());
         assert_eq!(v1[0], 100);
         assert_eq!(v1[2048], 100);
@@ -415,7 +416,7 @@ mod test {
         let mut v2 = v1.clone();
         ntt_forward(&params, v2.as_mut_slice());
         ntt_inverse(&params, v2.as_mut_slice());
-        for i in 0..params.crt_count*params.poly_len {
+        for i in 0..params.crt_count * params.poly_len {
             assert_eq!(v1[i], v2[i]);
         }
     }
