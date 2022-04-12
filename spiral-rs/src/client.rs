@@ -1,8 +1,7 @@
 use crate::{
     arith::*, discrete_gaussian::*, gadget::*, number_theory::*, params::*, poly::*, util::*,
 };
-use rand::rngs::StdRng;
-use rand::{thread_rng, Rng};
+use rand::{Rng};
 use std::iter::once;
 
 fn serialize_polymatrix(vec: &mut Vec<u8>, a: &PolyMatrixRaw) {
@@ -500,6 +499,8 @@ impl<'a, TRng: Rng> Client<'a, TRng> {
 
 #[cfg(test)]
 mod test {
+    use rand::thread_rng;
+
     use super::*;
 
     fn assert_first8(m: &[u64], gold: [u64; 8]) {
@@ -517,7 +518,7 @@ mod test {
         let mut rng = thread_rng();
         let client = Client::init(&params, &mut rng);
 
-        assert_eq!(client.stop_round, 6);
+        assert_eq!(client.stop_round, 5);
         assert_eq!(client.g, 10);
         assert_eq!(*client.params, params);
     }
@@ -531,7 +532,7 @@ mod test {
         let public_params = client.generate_keys();
 
         assert_first8(
-            &public_params.v_conversion.unwrap()[0].data,
+            public_params.v_conversion.unwrap()[0].data.as_slice(),
             [
                 253586619, 247235120, 141892996, 163163429, 15531298, 200914775, 125109567,
                 75889562,
@@ -539,7 +540,7 @@ mod test {
         );
 
         assert_first8(
-            &client.sk_gsw.data,
+            client.sk_gsw.data.as_slice(),
             [1, 5, 0, 3, 1, 3, 66974689739603967, 3],
         );
     }

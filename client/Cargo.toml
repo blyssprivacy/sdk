@@ -12,6 +12,7 @@ default = []
 
 [dependencies]
 spiral-rs = { path = "../spiral-rs" }
+rand = { version = "0.8.5" }
 wasm-bindgen = "0.2.74"
 
 # The `console_error_panic_hook` crate provides better debugging of panics by

@@ -1,4 +1,6 @@
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
+use pprof::criterion::{Output, PProfProfiler};
+
 use spiral_rs::client::*;
 use spiral_rs::poly::*;
 use spiral_rs::server::*;
@@ -9,9 +11,9 @@ fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("sample-size");
     group
         .sample_size(10)
-        .measurement_time(Duration::from_secs(10));
+        .measurement_time(Duration::from_secs(30));
 
-    let params = get_short_keygen_params();
+    let params = get_expansion_testing_params();
     let v_neg1 = params.get_v_neg1();
     let mut seeded_rng = get_seeded_rng();
     let mut client = Client::init(&params, &mut seeded_rng);
@@ -29,6 +31,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     let v_w_left = public_params.v_expansion_left.unwrap();
     let v_w_right = public_params.v_expansion_right.unwrap();
 
+    // note: the benchmark on AVX2 is 545ms for the c++ impl
     group.bench_function("coeff exp", |b| {
         b.iter(|| {
             coefficient_expansion(
@@ -46,5 +49,10 @@ fn criterion_benchmark(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, criterion_benchmark);
+// criterion_group!(benches, criterion_benchmark);
+criterion_group! {
+    name = benches;
+    config = Criterion::default().with_profiler(PProfProfiler::new(100, Output::Flamegraph(None)));
+    targets = criterion_benchmark
+}
 criterion_main!(benches);

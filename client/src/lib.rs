@@ -1,5 +1,5 @@
 mod utils;
-
+use rand::{rngs::ThreadRng, thread_rng};
 use spiral_rs::{client::*, discrete_gaussian::*, params::*, util::*};
 use wasm_bindgen::prelude::*;
 
@@ -19,17 +19,19 @@ macro_rules! console_log {
 // Avoids a lifetime in the return signature of bound Rust functions
 #[wasm_bindgen]
 pub struct WrappedClient {
-    client: Client<'static>,
+    client: Client<'static, ThreadRng>,
 }
 
 // Unsafe global with a static lifetime
 // Accessed unsafely only once, at load / setup
 static mut PARAMS: Params = get_empty_params();
+static mut RNG: Option<ThreadRng> = None;
 
 // Very simply test to ensure random generation is not obviously biased.
 fn dg_seems_okay() {
     let params = get_test_params();
-    let mut dg = DiscreteGaussian::init(&params);
+    let mut rng = thread_rng();
+    let mut dg = DiscreteGaussian::init(&params, &mut rng);
     let mut v = Vec::new();
     let trials = 10000;
     let mut sum = 0;
@@ -72,7 +74,8 @@ pub fn initialize(json_params: Option<String>) -> WrappedClient {
     // this minimal unsafe operation is need to initialize state
     unsafe {
         PARAMS = params_from_json(&cfg);
-        client = Client::init(&PARAMS);
+        RNG = Some(thread_rng());
+        client = Client::init(&PARAMS, RNG.as_mut().unwrap());
     }
 
     WrappedClient { client }

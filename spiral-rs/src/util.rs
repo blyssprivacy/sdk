@@ -52,6 +52,26 @@ pub fn get_short_keygen_params() -> Params {
     )
 }
 
+pub fn get_expansion_testing_params() -> Params {
+    let cfg = r#"
+        {'n': 2,
+        'nu_1': 9,
+        'nu_2': 6,
+        'p': 256,
+        'q_prime_bits': 20,
+        's_e': 87.62938774292914,
+        't_GSW': 8,
+        't_conv': 4,
+        't_exp': 8,
+        't_exp_right': 56,
+        'instances': 1,
+        'db_item_size': 256 }
+    "#;
+    let cfg = cfg.replace("'", "\"");
+    let b = params_from_json(&cfg);
+    b
+}
+
 pub fn get_seed() -> [u8; 32] {
     [
         1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6,

@@ -6,10 +6,10 @@ use rand::Rng;
 use std::cell::RefCell;
 use std::ops::{Add, Mul, Neg};
 
-use crate::{arith::*, discrete_gaussian::*, ntt::*, params::*, util::*};
+use crate::{arith::*, discrete_gaussian::*, ntt::*, params::*, util::*, aligned_memory::*};
 
 const SCRATCH_SPACE: usize = 8192;
-thread_local!(static SCRATCH: RefCell<Vec<u64>> = RefCell::new(vec![0u64; SCRATCH_SPACE]));
+thread_local!(static SCRATCH: RefCell<AlignedMemory64> = RefCell::new(AlignedMemory64::new(SCRATCH_SPACE)));
 
 pub trait PolyMatrix<'a> {
     fn is_ntt(&self) -> bool;
@@ -59,14 +59,14 @@ pub struct PolyMatrixRaw<'a> {
     pub params: &'a Params,
     pub rows: usize,
     pub cols: usize,
-    pub data: Vec<u64>,
+    pub data: AlignedMemory64,
 }
 
 pub struct PolyMatrixNTT<'a> {
     pub params: &'a Params,
     pub rows: usize,
     pub cols: usize,
-    pub data: Vec<u64>,
+    pub data: AlignedMemory64,
 }
 
 impl<'a> PolyMatrix<'a> for PolyMatrixRaw<'a> {
@@ -93,7 +93,7 @@ impl<'a> PolyMatrix<'a> for PolyMatrixRaw<'a> {
     }
     fn zero(params: &'a Params, rows: usize, cols: usize) -> PolyMatrixRaw<'a> {
         let num_coeffs = rows * cols * params.poly_len;
-        let data: Vec<u64> = vec![0; num_coeffs];
+        let data = AlignedMemory64::new(num_coeffs);
         PolyMatrixRaw {
             params,
             rows,
@@ -143,7 +143,7 @@ impl<'a> PolyMatrix<'a> for PolyMatrixRaw<'a> {
 impl<'a> PolyMatrixRaw<'a> {
     pub fn identity(params: &'a Params, rows: usize, cols: usize) -> PolyMatrixRaw<'a> {
         let num_coeffs = rows * cols * params.poly_len;
-        let mut data: Vec<u64> = vec![0; num_coeffs];
+        let mut data = AlignedMemory::new(num_coeffs);
         for r in 0..rows {
             let c = r;
             let idx = r * cols * params.poly_len + c * params.poly_len;
@@ -227,7 +227,7 @@ impl<'a> PolyMatrix<'a> for PolyMatrixNTT<'a> {
     }
     fn zero(params: &'a Params, rows: usize, cols: usize) -> PolyMatrixNTT<'a> {
         let num_coeffs = rows * cols * params.poly_len * params.crt_count;
-        let data: Vec<u64> = vec![0; num_coeffs];
+        let data = AlignedMemory::new(num_coeffs);
         PolyMatrixNTT {
             params,
             rows,
@@ -339,14 +339,14 @@ pub fn multiply_add_poly_avx(params: &Params, res: &mut [u64], a: &[u64], b: &[u
                 let p_x = &a[c * params.poly_len + i] as *const u64;
                 let p_y = &b[c * params.poly_len + i] as *const u64;
                 let p_z = &mut res[c * params.poly_len + i] as *mut u64;
-                let x = _mm256_loadu_si256(p_x as *const __m256i);
-                let y = _mm256_loadu_si256(p_y as *const __m256i);
-                let z = _mm256_loadu_si256(p_z as *const __m256i);
+                let x = _mm256_load_si256(p_x as *const __m256i);
+                let y = _mm256_load_si256(p_y as *const __m256i);
+                let z = _mm256_load_si256(p_z as *const __m256i);
 
                 let product = _mm256_mul_epu32(x, y);
                 let out = _mm256_add_epi64(z, product);
 
-                _mm256_storeu_si256(p_z as *mut __m256i, out);
+                _mm256_store_si256(p_z as *mut __m256i, out);
             }
         }
     }
@@ -505,6 +505,21 @@ pub fn to_ntt(a: &mut PolyMatrixNTT, b: &PolyMatrixRaw) {
                 for z in 0..params.poly_len {
                     pol_dst[n * params.poly_len + z] = pol_src[z] % params.moduli[n];
                 }
+            }
+            ntt_forward(params, pol_dst);
+        }
+    }
+}
+
+pub fn to_ntt_no_reduce(a: &mut PolyMatrixNTT, b: &PolyMatrixRaw) {
+    let params = a.params;
+    for r in 0..a.rows {
+        for c in 0..a.cols {
+            let pol_src = b.get_poly(r, c);
+            let pol_dst = a.get_poly_mut(r, c);
+            for n in 0..params.crt_count {
+                let idx = n * params.poly_len;
+                pol_dst[idx..idx + params.poly_len].copy_from_slice(pol_src);
             }
             ntt_forward(params, pol_dst);
         }

@@ -1,5 +1,3 @@
-use std::primitive;
-
 use crate::{params::*, poly::*};
 
 pub fn get_bits_per(params: &Params, dim: usize) -> usize {
@@ -33,16 +31,17 @@ pub fn build_gadget(params: &Params, rows: usize, cols: usize) -> PolyMatrixRaw 
     g
 }
 
-pub fn gadget_invert<'a>(mx: usize, inp: &PolyMatrixRaw<'a>) -> PolyMatrixRaw<'a> {
-    let params = inp.params;
+pub fn gadget_invert_rdim<'a>(out: &mut PolyMatrixRaw<'a>, inp: &PolyMatrixRaw<'a>, rdim: usize)  {
+    assert_eq!(out.cols, inp.cols);
 
-    let num_elems = mx / inp.rows;
+    let params = inp.params;
+    let mx = out.rows;
+    let num_elems = mx / rdim;
     let bits_per = get_bits_per(params, num_elems);
     let mask = (1u64 << bits_per) - 1;
 
-    let mut out = PolyMatrixRaw::zero(params, mx, inp.cols);
     for i in 0..inp.cols {
-        for j in 0..inp.rows {
+        for j in 0..rdim {
             for z in 0..params.poly_len {
                 let val = inp.get_poly(j, i)[z];
                 for k in 0..num_elems {
@@ -53,11 +52,20 @@ pub fn gadget_invert<'a>(mx: usize, inp: &PolyMatrixRaw<'a>) -> PolyMatrixRaw<'a
                         None => 0,
                     };
 
-                    out.get_poly_mut(j + k * inp.rows, i)[z] = piece;
+                    out.get_poly_mut(j + k * rdim, i)[z] = piece;
                 }
             }
         }
     }
+}
+
+pub fn gadget_invert<'a>(out: &mut PolyMatrixRaw<'a>, inp: &PolyMatrixRaw<'a>)  {
+    gadget_invert_rdim(out, inp, inp.rows);
+}
+
+pub fn gadget_invert_alloc<'a>(mx: usize, inp: &PolyMatrixRaw<'a>) -> PolyMatrixRaw<'a> {
+    let mut out = PolyMatrixRaw::zero(inp.params, mx, inp.cols);
+    gadget_invert(&mut out, inp);
     out
 }
 
@@ -74,7 +82,7 @@ mod test {
         mat.get_poly_mut(0, 0)[37] = 3;
         mat.get_poly_mut(1, 0)[37] = 6;
         let log_q = params.modulus_log2 as usize;
-        let result = gadget_invert(2 * log_q, &mat);
+        let result = gadget_invert_alloc(2 * log_q, &mat);
 
         assert_eq!(result.get_poly(0, 0)[37], 1);
         assert_eq!(result.get_poly(2, 0)[37], 1);

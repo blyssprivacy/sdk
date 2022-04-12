@@ -1,7 +1,6 @@
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
 use rand::Rng;
-use rand::{rngs::ThreadRng, thread_rng};
 
 use crate::params::*;
 use crate::poly::*;
@@ -53,6 +52,8 @@ impl<'a, T: Rng> DiscreteGaussian<'a, T> {
 
 #[cfg(test)]
 mod test {
+    use rand::thread_rng;
+
     use super::*;
     use crate::util::*;
 

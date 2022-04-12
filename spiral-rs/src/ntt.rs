@@ -156,8 +156,8 @@ pub fn ntt_forward(params: &Params, operand_overall: &mut [u64]) {
                             // Use AVX2 here
                             let p_x = &mut op[j] as *mut u64;
                             let p_y = &mut op[j + t] as *mut u64;
-                            let x = _mm256_loadu_si256(p_x as *const __m256i);
-                            let y = _mm256_loadu_si256(p_y as *const __m256i);
+                            let x = _mm256_load_si256(p_x as *const __m256i);
+                            let y = _mm256_load_si256(p_y as *const __m256i);
 
                             let cmp_val = _mm256_set1_epi64x(two_times_modulus_small as i64);
                             let gt_mask = _mm256_cmpgt_epi64(x, cmp_val);
@@ -181,8 +181,8 @@ pub fn ntt_forward(params: &Params, operand_overall: &mut [u64]) {
                             let q_final_inverted = _mm256_sub_epi64(cmp_val, q_final);
                             let new_y = _mm256_add_epi64(curr_x, q_final_inverted);
 
-                            _mm256_storeu_si256(p_x as *mut __m256i, new_x);
-                            _mm256_storeu_si256(p_y as *mut __m256i, new_y);
+                            _mm256_store_si256(p_x as *mut __m256i, new_x);
+                            _mm256_store_si256(p_y as *mut __m256i, new_y);
                         }
                     }
                 }
@@ -194,7 +194,7 @@ pub fn ntt_forward(params: &Params, operand_overall: &mut [u64]) {
                 let p_x = &mut operand[i] as *mut u64;
 
                 let cmp_val1 = _mm256_set1_epi64x(two_times_modulus_small as i64);
-                let mut x = _mm256_loadu_si256(p_x as *const __m256i);
+                let mut x = _mm256_load_si256(p_x as *const __m256i);
                 let mut gt_mask = _mm256_cmpgt_epi64(x, cmp_val1);
                 let mut to_subtract = _mm256_and_si256(gt_mask, cmp_val1);
                 x = _mm256_sub_epi64(x, to_subtract);
@@ -203,7 +203,7 @@ pub fn ntt_forward(params: &Params, operand_overall: &mut [u64]) {
                 gt_mask = _mm256_cmpgt_epi64(x, cmp_val2);
                 to_subtract = _mm256_and_si256(gt_mask, cmp_val2);
                 x = _mm256_sub_epi64(x, to_subtract);
-                _mm256_storeu_si256(p_x as *mut __m256i, x);
+                _mm256_store_si256(p_x as *mut __m256i, x);
             }
         }
     }
@@ -301,8 +301,8 @@ pub fn ntt_inverse(params: &Params, operand_overall: &mut [u64]) {
                             // Use AVX2 here
                             let p_x = &mut op[j] as *mut u64;
                             let p_y = &mut op[j + t] as *mut u64;
-                            let x = _mm256_loadu_si256(p_x as *const __m256i);
-                            let y = _mm256_loadu_si256(p_y as *const __m256i);
+                            let x = _mm256_load_si256(p_x as *const __m256i);
+                            let y = _mm256_load_si256(p_y as *const __m256i);
 
                             let modulus_vec = _mm256_set1_epi64x(modulus as i64);
                             let two_times_modulus_vec =
@@ -331,8 +331,8 @@ pub fn ntt_inverse(params: &Params, operand_overall: &mut [u64]) {
                             let h_tmp_times_modulus = _mm256_mul_epu32(h_tmp, modulus_vec);
                             let new_y = _mm256_sub_epi64(w_times_t_tmp, h_tmp_times_modulus);
 
-                            _mm256_storeu_si256(p_x as *mut __m256i, new_x);
-                            _mm256_storeu_si256(p_y as *mut __m256i, new_y);
+                            _mm256_store_si256(p_x as *mut __m256i, new_x);
+                            _mm256_store_si256(p_y as *mut __m256i, new_y);
                         }
                     }
                 }
@@ -343,13 +343,31 @@ pub fn ntt_inverse(params: &Params, operand_overall: &mut [u64]) {
             operand[i] -= ((operand[i] >= two_times_modulus) as u64) * two_times_modulus;
             operand[i] -= ((operand[i] >= modulus) as u64) * modulus;
         }
+
+        // for i in (0..n).step_by(4) {
+        //     unsafe {
+        //         let p_x = &mut operand[i] as *mut u64;
+
+        //         let cmp_val1 = _mm256_set1_epi64x(two_times_modulus as i64);
+        //         let mut x = _mm256_load_si256(p_x as *const __m256i);
+        //         let mut gt_mask = _mm256_cmpgt_epi64(x, cmp_val1);
+        //         let mut to_subtract = _mm256_and_si256(gt_mask, cmp_val1);
+        //         x = _mm256_sub_epi64(x, to_subtract);
+
+        //         let cmp_val2 = _mm256_set1_epi64x(modulus as i64);
+        //         gt_mask = _mm256_cmpgt_epi64(x, cmp_val2);
+        //         to_subtract = _mm256_and_si256(gt_mask, cmp_val2);
+        //         x = _mm256_sub_epi64(x, to_subtract);
+        //         _mm256_store_si256(p_x as *mut __m256i, x);
+        //     }
+        // }
     }
 }
 
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::util::*;
+    use crate::{util::*, aligned_memory::AlignedMemory64};
     use rand::Rng;
 
     fn get_params() -> Params {
@@ -382,7 +400,7 @@ mod test {
     #[test]
     fn ntt_forward_correct() {
         let params = get_params();
-        let mut v1 = vec![0; 2 * 2048];
+        let mut v1 = AlignedMemory64::new(2 * 2048);
         v1[0] = 100;
         v1[2048] = 100;
         ntt_forward(&params, v1.as_mut_slice());
@@ -393,7 +411,10 @@ mod test {
     #[test]
     fn ntt_inverse_correct() {
         let params = get_params();
-        let mut v1 = vec![100; 2 * 2048];
+        let mut v1 = AlignedMemory64::new(2 * 2048);
+        for i in 0..v1.len() {
+            v1[i] = 100;
+        }
         ntt_inverse(&params, v1.as_mut_slice());
         assert_eq!(v1[0], 100);
         assert_eq!(v1[2048], 100);
@@ -404,7 +425,7 @@ mod test {
     #[test]
     fn ntt_correct() {
         let params = get_params();
-        let mut v1 = vec![0; params.crt_count * params.poly_len];
+        let mut v1 = AlignedMemory64::new(params.crt_count * params.poly_len);
         let mut rng = rand::thread_rng();
         for i in 0..params.crt_count {
             for j in 0..params.poly_len {
