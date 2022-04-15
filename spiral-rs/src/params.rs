@@ -1,5 +1,7 @@
 use crate::{arith::*, ntt::*, number_theory::*, poly::*};
 
+pub const MAX_MODULI: usize = 4;
+
 pub static Q2_VALUES: [u64; 37] = [
     0,
     0,
@@ -48,7 +50,13 @@ pub struct Params {
     pub scratch: Vec<u64>,
 
     pub crt_count: usize,
-    pub moduli: Vec<u64>,
+    pub barrett_cr_0: [u64; MAX_MODULI],
+    pub barrett_cr_1: [u64; MAX_MODULI],
+    pub barrett_cr_0_modulus: u64,
+    pub barrett_cr_1_modulus: u64,
+    pub mod0_inv_mod1: u64,
+    pub mod1_inv_mod0: u64,
+    pub moduli: [u64; MAX_MODULI],
     pub modulus: u64,
     pub modulus_log2: u64,
     pub noise_width: f64,
@@ -112,13 +120,10 @@ impl Params {
     pub fn crt_compose_2(&self, x: u64, y: u64) -> u64 {
         assert_eq!(self.crt_count, 2);
 
-        let a = self.moduli[0];
-        let b = self.moduli[1];
-        let a_inv_mod_b = invert_uint_mod(a, b).unwrap();
-        let b_inv_mod_a = invert_uint_mod(b, a).unwrap();
-        let mut val = (x as u128) * (b_inv_mod_a as u128) * (b as u128);
-        val += (y as u128) * (a_inv_mod_b as u128) * (a as u128);
-        (val % (self.modulus as u128)) as u64 // FIXME: use barrett
+        let mut val = (x as u128) * (self.mod1_inv_mod0 as u128);
+        val += (y as u128) * (self.mod0_inv_mod1 as u128);
+
+        barrett_reduction_u128(self, val)
     }
 
     pub fn crt_compose(&self, a: &[u64], idx: usize) -> u64 {
@@ -131,7 +136,7 @@ impl Params {
 
     pub fn init(
         poly_len: usize,
-        moduli: &Vec<u64>,
+        moduli: &[u64],
         noise_width: f64,
         n: usize,
         pt_modulus: u64,
@@ -148,20 +153,35 @@ impl Params {
     ) -> Self {
         let poly_len_log2 = log2(poly_len as u64) as usize;
         let crt_count = moduli.len();
-        let ntt_tables = build_ntt_tables(poly_len, moduli.as_slice());
+        assert!(crt_count <= MAX_MODULI);
+        let mut moduli_array = [0; MAX_MODULI];
+        for i in 0..crt_count {
+            moduli_array[i] = moduli[i];
+        }
+        let ntt_tables = build_ntt_tables(poly_len, moduli);
         let scratch = vec![0u64; crt_count * poly_len];
         let mut modulus = 1;
         for m in moduli {
             modulus *= m;
         }
         let modulus_log2 = log2_ceil(modulus);
+        let (barrett_cr_0, barrett_cr_1) = get_barrett(moduli);
+        let (barrett_cr_0_modulus, barrett_cr_1_modulus) = get_barrett_crs(modulus);
+        let mod0_inv_mod1 = moduli[0] * invert_uint_mod(moduli[0], moduli[1]).unwrap();
+        let mod1_inv_mod0 = moduli[1] * invert_uint_mod(moduli[1], moduli[0]).unwrap();
         Self {
             poly_len,
             poly_len_log2,
             ntt_tables,
             scratch,
             crt_count,
-            moduli: moduli.clone(),
+            barrett_cr_0,
+            barrett_cr_1,
+            barrett_cr_0_modulus,
+            barrett_cr_1_modulus,
+            mod0_inv_mod1,
+            mod1_inv_mod0,
+            moduli: moduli_array,
             modulus,
             modulus_log2,
             noise_width,

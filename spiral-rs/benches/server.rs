@@ -32,7 +32,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     let v_w_right = public_params.v_expansion_right.unwrap();
 
     // note: the benchmark on AVX2 is 545ms for the c++ impl
-    group.bench_function("coeff exp", |b| {
+    group.bench_function("coeff_exp", |b| {
         b.iter(|| {
             coefficient_expansion(
                 black_box(&mut v),

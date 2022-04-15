@@ -1,4 +1,4 @@
-use crate::arith;
+use crate::arith::*;
 use crate::gadget::*;
 use crate::params::*;
 use crate::poly::*;
@@ -41,33 +41,33 @@ pub fn coefficient_expansion(
             }
 
             let (w, _gadget_dim, gi_ct, gi_ct_ntt) = match i % 2 {
-                0 => (&v_w_left[r], params.t_exp_left, &mut ginv_ct_left, &mut ginv_ct_left_ntt),
-                1 | _ => (&v_w_right[r], params.t_exp_right, &mut ginv_ct_right, &mut ginv_ct_right_ntt),
+                0 => (
+                    &v_w_left[r],
+                    params.t_exp_left,
+                    &mut ginv_ct_left,
+                    &mut ginv_ct_left_ntt,
+                ),
+                1 | _ => (
+                    &v_w_right[r],
+                    params.t_exp_right,
+                    &mut ginv_ct_right,
+                    &mut ginv_ct_right_ntt,
+                ),
             };
-            // let (w, gadget_dim) = match i % 2 {
-            //     0 => (&v_w_left[r], params.t_exp_left),
-            //     1 | _ => (&v_w_right[r], params.t_exp_right),
-            // };
-
 
             if i < num_in {
                 let (src, dest) = v.split_at_mut(num_in);
                 scalar_multiply(&mut dest[i], neg1, &src[i]);
             }
 
-            // let ct = from_ntt_alloc(&v[i]);
-            // let ct_auto = automorph_alloc(&ct, t);
-            // let ct_auto_0 = ct_auto.submatrix(0, 0, 1, 1);
-            // let ct_auto_1_ntt = ct_auto.submatrix(1, 0, 1, 1).ntt();
-            // let ginv_ct = gadget_invert_alloc(gadget_dim, &ct_auto_0);
-            // let ginv_ct_ntt = ginv_ct.ntt();
-            // let w_times_ginv_ct = w * &ginv_ct_ntt;
-
             from_ntt(&mut ct, &v[i]);
             automorph(&mut ct_auto, &ct, t);
             gadget_invert_rdim(gi_ct, &ct_auto, 1);
             to_ntt_no_reduce(gi_ct_ntt, &gi_ct);
-            ct_auto_1.data.as_mut_slice().copy_from_slice(ct_auto.get_poly(1, 0));
+            ct_auto_1
+                .data
+                .as_mut_slice()
+                .copy_from_slice(ct_auto.get_poly(1, 0));
             to_ntt(&mut ct_auto_1_ntt, &ct_auto_1);
             multiply(&mut w_times_ginv_ct, w, &gi_ct_ntt);
 
@@ -78,7 +78,7 @@ pub fn coefficient_expansion(
                         let sum = v[i].data[idx]
                             + w_times_ginv_ct.data[idx]
                             + j * ct_auto_1_ntt.data[n * poly_len + z];
-                        v[i].data[idx] = arith::modular_reduce(params, sum, n);
+                        v[i].data[idx] = barrett_coeff_u64(params, sum, n);
                         idx += 1;
                     }
                 }

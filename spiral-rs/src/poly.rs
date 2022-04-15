@@ -6,7 +6,7 @@ use rand::Rng;
 use std::cell::RefCell;
 use std::ops::{Add, Mul, Neg};
 
-use crate::{arith::*, discrete_gaussian::*, ntt::*, params::*, util::*, aligned_memory::*};
+use crate::{aligned_memory::*, arith::*, discrete_gaussian::*, ntt::*, params::*, util::*};
 
 const SCRATCH_SPACE: usize = 8192;
 thread_local!(static SCRATCH: RefCell<AlignedMemory64> = RefCell::new(AlignedMemory64::new(SCRATCH_SPACE)));
@@ -355,7 +355,8 @@ pub fn multiply_add_poly_avx(params: &Params, res: &mut [u64], a: &[u64], b: &[u
 pub fn modular_reduce(params: &Params, res: &mut [u64]) {
     for c in 0..params.crt_count {
         for i in 0..params.poly_len {
-            res[c * params.poly_len + i] %= params.moduli[c];
+            let idx = c * params.poly_len + i;
+            res[idx] = barrett_coeff_u64(params, res[idx], c);
         }
     }
 }
@@ -495,17 +496,21 @@ pub fn single_poly<'a>(params: &'a Params, val: u64) -> PolyMatrixRaw<'a> {
     res
 }
 
+fn reduce_copy(params: &Params, out: &mut [u64], inp: &[u64]) {
+    for n in 0..params.crt_count {
+        for z in 0..params.poly_len {
+            out[n * params.poly_len + z] = barrett_coeff_u64(params, inp[z], n);
+        }
+    }
+}
+
 pub fn to_ntt(a: &mut PolyMatrixNTT, b: &PolyMatrixRaw) {
     let params = a.params;
     for r in 0..a.rows {
         for c in 0..a.cols {
             let pol_src = b.get_poly(r, c);
             let pol_dst = a.get_poly_mut(r, c);
-            for n in 0..params.crt_count {
-                for z in 0..params.poly_len {
-                    pol_dst[n * params.poly_len + z] = pol_src[z] % params.moduli[n];
-                }
-            }
+            reduce_copy(params, pol_dst, pol_src);
             ntt_forward(params, pol_dst);
         }
     }

@@ -4,11 +4,25 @@ use spiral_rs::util::*;
 
 fn criterion_benchmark(c: &mut Criterion) {
     let params = get_test_params();
-    let m1 = PolyMatrixNTT::random(&params, 2, 1);
-    let m2 = PolyMatrixNTT::random(&params, 3, 2);
-    let mut m3 = PolyMatrixNTT::zero(&params, 2, 2);
-    c.bench_function("nttf 2048", |b| {
-        b.iter(|| multiply(black_box(&mut m3), black_box(&m1), black_box(&m2)))
+    let mut m1 = PolyMatrixRaw::random(&params, 10, 10);
+    let mut m2 = PolyMatrixNTT::random(&params, 10, 10);
+    let m3 = PolyMatrixNTT::random(&params, 10, 10);
+    let mut m4 = PolyMatrixNTT::random(&params, 10, 10);
+
+    // c.bench_function("nttf_noreduce 2048", |b| {
+    //     b.iter(|| to_ntt_no_reduce(black_box(&mut m2), black_box(&m1)))
+    // });
+
+    c.bench_function("multiply", |b| {
+        b.iter(|| multiply(black_box(&mut m4), black_box(&m2), black_box(&m3)))
+    });
+
+    c.bench_function("nttf_full 2048", |b| {
+        b.iter(|| to_ntt(black_box(&mut m2), black_box(&m1)))
+    });
+
+    c.bench_function("ntti_full 2048", |b| {
+        b.iter(|| from_ntt(black_box(&mut m1), black_box(&m2)))
     });
 }
 

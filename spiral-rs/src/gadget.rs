@@ -31,7 +31,7 @@ pub fn build_gadget(params: &Params, rows: usize, cols: usize) -> PolyMatrixRaw 
     g
 }
 
-pub fn gadget_invert_rdim<'a>(out: &mut PolyMatrixRaw<'a>, inp: &PolyMatrixRaw<'a>, rdim: usize)  {
+pub fn gadget_invert_rdim<'a>(out: &mut PolyMatrixRaw<'a>, inp: &PolyMatrixRaw<'a>, rdim: usize) {
     assert_eq!(out.cols, inp.cols);
 
     let params = inp.params;
@@ -59,7 +59,7 @@ pub fn gadget_invert_rdim<'a>(out: &mut PolyMatrixRaw<'a>, inp: &PolyMatrixRaw<'
     }
 }
 
-pub fn gadget_invert<'a>(out: &mut PolyMatrixRaw<'a>, inp: &PolyMatrixRaw<'a>)  {
+pub fn gadget_invert<'a>(out: &mut PolyMatrixRaw<'a>, inp: &PolyMatrixRaw<'a>) {
     gadget_invert_rdim(out, inp, inp.rows);
 }
 

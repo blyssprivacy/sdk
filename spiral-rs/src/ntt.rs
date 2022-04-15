@@ -367,7 +367,7 @@ pub fn ntt_inverse(params: &Params, operand_overall: &mut [u64]) {
 #[cfg(test)]
 mod test {
     use super::*;
-    use crate::{util::*, aligned_memory::AlignedMemory64};
+    use crate::{aligned_memory::AlignedMemory64, util::*};
     use rand::Rng;
 
     fn get_params() -> Params {

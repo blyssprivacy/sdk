@@ -6,14 +6,14 @@ use wasm_bindgen::prelude::*;
 const UUID_V4_LEN: usize = 36;
 
 // console_log! macro
-#[wasm_bindgen]
-extern "C" {
-    #[wasm_bindgen(js_namespace = console)]
-    fn log(s: &str);
-}
-macro_rules! console_log {
-    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
-}
+// #[wasm_bindgen]
+// extern "C" {
+//     #[wasm_bindgen(js_namespace = console)]
+//     fn log(s: &str);
+// }
+// macro_rules! console_log {
+//     ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
+// }
 
 // Container class for a static lifetime Client
 // Avoids a lifetime in the return signature of bound Rust functions
