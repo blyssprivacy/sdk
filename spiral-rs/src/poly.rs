@@ -386,9 +386,9 @@ pub fn multiply(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatrixNTT) {
 
 #[cfg(target_feature = "avx2")]
 pub fn multiply(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatrixNTT) {
-    assert!(res.rows == a.rows);
-    assert!(res.cols == b.cols);
-    assert!(a.cols == b.rows);
+    assert_eq!(res.rows, a.rows);
+    assert_eq!(res.cols, b.cols);
+    assert_eq!(a.cols, b.rows);
 
     let params = res.params;
     for i in 0..a.rows {

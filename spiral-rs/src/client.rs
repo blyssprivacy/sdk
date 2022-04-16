@@ -226,6 +226,14 @@ impl<'a, TRng: Rng> Client<'a, TRng> {
         &p + &a.pad_top(1)
     }
 
+    pub fn decrypt_matrix_reg(&mut self, a: &PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
+        &self.sk_reg_full.ntt() * a
+    }
+
+    pub fn decrypt_matrix_gsw(&mut self, a: &PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
+        &self.sk_gsw_full.ntt() * a
+    }
+
     fn generate_expansion_params(
         &mut self,
         num_exp: usize,
