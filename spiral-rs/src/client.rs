@@ -73,9 +73,9 @@ impl<'a> PublicParameters<'a> {
 }
 
 pub struct Query<'a> {
-    ct: Option<PolyMatrixRaw<'a>>,
-    v_buf: Option<Vec<u64>>,
-    v_ct: Option<Vec<PolyMatrixRaw<'a>>>,
+    pub ct: Option<PolyMatrixRaw<'a>>,
+    pub v_buf: Option<Vec<u64>>,
+    pub v_ct: Option<Vec<PolyMatrixRaw<'a>>>,
 }
 
 impl<'a> Query<'a> {
@@ -498,7 +498,7 @@ mod test {
     #[test]
     fn keygen_is_correct() {
         let params = get_params();
-        let mut seeded_rng = get_seeded_rng();
+        let mut seeded_rng = get_static_seeded_rng();
         let mut client = Client::init(&params, &mut seeded_rng);
 
         let public_params = client.generate_keys();

@@ -1,5 +1,5 @@
 use crate::{arith::*, params::*, poly::*};
-use rand::{prelude::StdRng, SeedableRng};
+use rand::{prelude::StdRng, SeedableRng, thread_rng, Rng};
 use serde_json::Value;
 
 pub fn calc_index(indices: &[usize], lengths: &[usize]) -> usize {
@@ -73,14 +73,22 @@ pub fn get_expansion_testing_params() -> Params {
 }
 
 pub fn get_seed() -> [u8; 32] {
+    thread_rng().gen::<[u8; 32]>()
+}
+
+pub fn get_seeded_rng() -> StdRng {
+    StdRng::from_seed(get_seed())
+}
+
+pub fn get_static_seed() -> [u8; 32] {
     [
         1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6,
         7, 8,
     ]
 }
 
-pub fn get_seeded_rng() -> StdRng {
-    StdRng::from_seed(get_seed())
+pub fn get_static_seeded_rng() -> StdRng {
+    StdRng::from_seed(get_static_seed())
 }
 
 pub const fn get_empty_params() -> Params {

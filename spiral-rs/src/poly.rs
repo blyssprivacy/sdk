@@ -140,6 +140,19 @@ impl<'a> PolyMatrix<'a> for PolyMatrixRaw<'a> {
     }
 }
 
+impl<'a> Clone for PolyMatrixRaw<'a> {
+    fn clone(&self) -> Self {
+        let mut data_clone = AlignedMemory64::new(self.data.len());
+        data_clone.as_mut_slice().copy_from_slice(self.data.as_slice());
+        PolyMatrixRaw {
+            params: self.params,
+            rows: self.rows,
+            cols: self.cols,
+            data: data_clone,
+        }
+    }
+}
+
 impl<'a> PolyMatrixRaw<'a> {
     pub fn identity(params: &'a Params, rows: usize, cols: usize) -> PolyMatrixRaw<'a> {
         let num_coeffs = rows * cols * params.poly_len;
@@ -177,6 +190,17 @@ impl<'a> PolyMatrixRaw<'a> {
             for c in 0..self.cols {
                 for z in 0..self.params.poly_len {
                     self.get_poly_mut(r, c)[z] %= modulus;
+                }
+            }
+        }
+    }
+
+    pub fn apply_func<F: Fn(u64) -> u64>(&mut self, func: F) {
+        for r in 0..self.rows {
+            for c in 0..self.cols {
+                let pol_mut = self.get_poly_mut(r, c);
+                for el in pol_mut {
+                    *el = func(*el);
                 }
             }
         }
@@ -285,6 +309,19 @@ impl<'a> PolyMatrix<'a> for PolyMatrixNTT<'a> {
             }
         }
         m
+    }
+}
+
+impl<'a> Clone for PolyMatrixNTT<'a> {
+    fn clone(&self) -> Self {
+        let mut data_clone = AlignedMemory64::new(self.data.len());
+        data_clone.as_mut_slice().copy_from_slice(self.data.as_slice());
+        PolyMatrixNTT {
+            params: self.params,
+            rows: self.rows,
+            cols: self.cols,
+            data: data_clone,
+        }
     }
 }
 
@@ -451,6 +488,17 @@ pub fn add_into(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT) {
     for i in 0..res.rows {
         for j in 0..res.cols {
             let res_poly = res.get_poly_mut(i, j);
+            let pol2 = a.get_poly(i, j);
+            add_poly_into(params, res_poly, pol2);
+        }
+    }
+}
+
+pub fn add_into_at(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, t_row: usize, t_col: usize) {
+    let params = res.params;
+    for i in 0..a.rows {
+        for j in 0..a.cols {
+            let res_poly = res.get_poly_mut(t_row + i, t_col + j);
             let pol2 = a.get_poly(i, j);
             add_poly_into(params, res_poly, pol2);
         }
