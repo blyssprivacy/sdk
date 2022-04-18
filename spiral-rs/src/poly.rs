@@ -172,6 +172,16 @@ impl<'a> PolyMatrixRaw<'a> {
         to_ntt_alloc(&self)
     }
 
+    pub fn reduce_mod(&mut self, modulus: u64) {
+        for r in 0..self.rows {
+            for c in 0..self.cols {
+                for z in 0..self.params.poly_len {
+                    self.get_poly_mut(r, c)[z] %= modulus;
+                }
+            }
+        }
+    }
+
     pub fn to_vec(&self, modulus_bits: usize, num_coeffs: usize) -> Vec<u8> {
         let sz_bits = self.rows * self.cols * num_coeffs * modulus_bits;
         let sz_bytes = f64::ceil((sz_bits as f64) / 8f64) as usize + 32;

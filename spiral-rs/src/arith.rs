@@ -123,7 +123,7 @@ pub fn barrett_raw_u64(input: u64, const_ratio_1: u64, modulus: u64) -> u64 {
     let tmp = (((input as u128) * (const_ratio_1 as u128)) >> 64) as u64;
 
     // Barrett subtraction
-    let res = input - tmp * modulus;
+    let mut res = input - tmp * modulus;
 
     // One more subtraction is enough
     if res >= modulus {
@@ -406,6 +406,37 @@ pub fn divide_uint192_inplace(mut numerator: [u64; 3], denominator: u64) -> ([u6
     }
 
     (numerator, quotient)
+}
+
+pub fn recenter_mod(val: u64, small_modulus: u64, large_modulus: u64) -> u64 {
+    assert!(val < small_modulus);
+    let mut val_i64 = val as i64;
+    let small_modulus_i64 = small_modulus as i64;
+    let large_modulus_i64 = large_modulus as i64;
+    if val_i64 > small_modulus_i64 / 2 {
+        val_i64 -= small_modulus_i64;
+    }
+    if val_i64 < 0 {
+        val_i64 += large_modulus_i64;
+    }
+    val_i64 as u64
+}
+
+pub fn rescale(a: u64, inp_mod: u64, out_mod: u64) -> u64 {
+    let inp_mod_i64 = inp_mod as i64;
+    let out_mod_i128 = out_mod as i128;
+    let mut inp_val = (a % inp_mod) as i64;
+    if inp_val >= (inp_mod_i64 / 2) {
+        inp_val -= inp_mod_i64;
+    }
+    let sign: i64 = if inp_val >= 0 { 1 } else { -1 };
+    let val = (inp_val as i128) * (out_mod as i128);
+    let mut result = (val + (sign*(inp_mod_i64/2)) as i128) / (inp_mod as i128);
+    result = (result + ((inp_mod/out_mod)*out_mod) as i128 + (2*out_mod_i128)) % out_mod_i128;
+
+    assert!(result >= 0);
+    
+    ((result + out_mod_i128) % out_mod_i128) as u64
 }
 
 #[cfg(test)]

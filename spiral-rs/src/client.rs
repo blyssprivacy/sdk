@@ -309,42 +309,6 @@ impl<'a, TRng: Rng> Client<'a, TRng> {
         pp
     }
 
-    // reindexes a vector of regev ciphertexts, to help server
-    fn reorient_reg_ciphertexts(&self, out: &mut [u64], v_reg: &Vec<PolyMatrixNTT>) {
-        let params = self.params;
-        let poly_len = params.poly_len;
-        let crt_count = params.crt_count;
-
-        assert_eq!(crt_count, 2);
-        assert!(log2(params.moduli[0]) <= 32);
-
-        let num_reg_expanded = 1 << params.db_dim_1;
-        let ct_rows = v_reg[0].rows;
-        let ct_cols = v_reg[0].cols;
-
-        assert_eq!(ct_rows, 2);
-        assert_eq!(ct_cols, 1);
-
-        for j in 0..num_reg_expanded {
-            for r in 0..ct_rows {
-                for m in 0..ct_cols {
-                    for z in 0..params.poly_len {
-                        let idx_a_in =
-                            r * (ct_cols * crt_count * poly_len) + m * (crt_count * poly_len);
-                        let idx_a_out = z * (num_reg_expanded * ct_cols * ct_rows)
-                            + j * (ct_cols * ct_rows)
-                            + m * (ct_rows)
-                            + r;
-                        let val1 = v_reg[j].data[idx_a_in + z] % params.moduli[0];
-                        let val2 = v_reg[j].data[idx_a_in + params.poly_len + z] % params.moduli[1];
-
-                        out[idx_a_out] = val1 | (val2 << 32);
-                    }
-                }
-            }
-        }
-    }
-
     pub fn generate_query(&mut self, idx_target: usize) -> Query<'a> {
         let params = self.params;
         let further_dims = params.db_dim_2;
@@ -393,7 +357,7 @@ impl<'a, TRng: Rng> Client<'a, TRng> {
                 reg_cts.push(self.encrypt_matrix_reg(&to_ntt_alloc(&sigma)));
             }
             // reorient into server's preferred indexing
-            self.reorient_reg_ciphertexts(reg_cts_buf.as_mut_slice(), &reg_cts);
+            reorient_reg_ciphertexts(self.params, reg_cts_buf.as_mut_slice(), &reg_cts);
 
             // generate GSW ciphertexts
             for i in 0..further_dims {

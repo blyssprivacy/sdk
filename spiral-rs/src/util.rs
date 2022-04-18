@@ -1,4 +1,4 @@
-use crate::params::*;
+use crate::{arith::*, params::*, poly::*};
 use rand::{prelude::StdRng, SeedableRng};
 use serde_json::Value;
 
@@ -179,6 +179,40 @@ pub fn write_arbitrary_bits(data: &mut [u8], mut val: u64, bit_offs: usize, num_
         cur_val &= mask;
         cur_val |= (val as u128) << bit_off_within_word;
         data[idx..idx + 16].copy_from_slice(&u128::to_ne_bytes(cur_val));
+    }
+}
+
+pub fn reorient_reg_ciphertexts(params: &Params, out: &mut [u64], v_reg: &Vec<PolyMatrixNTT>) {
+    let poly_len = params.poly_len;
+    let crt_count = params.crt_count;
+
+    assert_eq!(crt_count, 2);
+    assert!(log2(params.moduli[0]) <= 32);
+
+    let num_reg_expanded = 1 << params.db_dim_1;
+    let ct_rows = v_reg[0].rows;
+    let ct_cols = v_reg[0].cols;
+
+    assert_eq!(ct_rows, 2);
+    assert_eq!(ct_cols, 1);
+
+    for j in 0..num_reg_expanded {
+        for r in 0..ct_rows {
+            for m in 0..ct_cols {
+                for z in 0..params.poly_len {
+                    let idx_a_in =
+                        r * (ct_cols * crt_count * poly_len) + m * (crt_count * poly_len);
+                    let idx_a_out = z * (num_reg_expanded * ct_cols * ct_rows)
+                        + j * (ct_cols * ct_rows)
+                        + m * (ct_rows)
+                        + r;
+                    let val1 = v_reg[j].data[idx_a_in + z] % params.moduli[0];
+                    let val2 = v_reg[j].data[idx_a_in + params.poly_len + z] % params.moduli[1];
+
+                    out[idx_a_out] = val1 | (val2 << 32);
+                }
+            }
+        }
     }
 }
 
