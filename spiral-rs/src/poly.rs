@@ -321,6 +321,15 @@ pub fn add_poly(params: &Params, res: &mut [u64], a: &[u64], b: &[u64]) {
     }
 }
 
+pub fn add_poly_into(params: &Params, res: &mut [u64], a: &[u64]) {
+    for c in 0..params.crt_count {
+        for i in 0..params.poly_len {
+            let idx = c * params.poly_len + i;
+            res[idx] = add_modular(params, res[idx], a[idx], c);
+        }
+    }
+}
+
 pub fn invert_poly(params: &Params, res: &mut [u64], a: &[u64]) {
     for i in 0..params.poly_len {
         res[i] = params.modulus - a[i];
@@ -430,6 +439,20 @@ pub fn add(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT, b: &PolyMatrixNTT) {
             let pol1 = a.get_poly(i, j);
             let pol2 = b.get_poly(i, j);
             add_poly(params, res_poly, pol1, pol2);
+        }
+    }
+}
+
+pub fn add_into(res: &mut PolyMatrixNTT, a: &PolyMatrixNTT) {
+    assert!(res.rows == a.rows);
+    assert!(res.cols == a.cols);
+
+    let params = res.params;
+    for i in 0..res.rows {
+        for j in 0..res.cols {
+            let res_poly = res.get_poly_mut(i, j);
+            let pol2 = a.get_poly(i, j);
+            add_poly_into(params, res_poly, pol2);
         }
     }
 }

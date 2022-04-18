@@ -110,7 +110,7 @@ impl<'a> Query<'a> {
 pub struct Client<'a, TRng: Rng> {
     params: &'a Params,
     sk_gsw: PolyMatrixRaw<'a>,
-    sk_reg: PolyMatrixRaw<'a>,
+    pub sk_reg: PolyMatrixRaw<'a>,
     sk_gsw_full: PolyMatrixRaw<'a>,
     sk_reg_full: PolyMatrixRaw<'a>,
     dg: DiscreteGaussian<'a, TRng>,
