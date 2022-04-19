@@ -465,6 +465,7 @@ impl<'a, TRng: Rng> Client<'a, TRng> {
         let bytes_per_chunk = f64::ceil(params.db_item_size as f64 / chunks as f64) as usize;
         let logp = log2(params.pt_modulus);
         let modp_words_per_chunk = f64::ceil((bytes_per_chunk * 8) as f64 / logp as f64) as usize;
+        println!("modp_words_per_chunk {:?}", modp_words_per_chunk);
         result.to_vec(p_bits as usize, modp_words_per_chunk)
     }
 }

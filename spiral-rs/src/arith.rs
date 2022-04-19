@@ -123,7 +123,7 @@ pub fn barrett_raw_u64(input: u64, const_ratio_1: u64, modulus: u64) -> u64 {
     let tmp = (((input as u128) * (const_ratio_1 as u128)) >> 64) as u64;
 
     // Barrett subtraction
-    let mut res = input - tmp * modulus;
+    let res = input - tmp * modulus;
 
     // One more subtraction is enough
     if res >= modulus {

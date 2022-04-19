@@ -65,7 +65,7 @@ pub fn get_expansion_testing_params() -> Params {
         't_exp': 8,
         't_exp_right': 56,
         'instances': 1,
-        'db_item_size': 256 }
+        'db_item_size': 8192 }
     "#;
     let cfg = cfg.replace("'", "\"");
     let b = params_from_json(&cfg);

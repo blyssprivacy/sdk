@@ -1,3 +1,5 @@
+use criterion::BenchmarkGroup;
+use criterion::measurement::WallTime;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use pprof::criterion::{Output, PProfProfiler};
 
@@ -8,6 +10,29 @@ use spiral_rs::poly::*;
 use spiral_rs::server::*;
 use spiral_rs::util::*;
 use std::time::Duration;
+
+fn test_full_processing(group: &mut BenchmarkGroup<WallTime>) {
+    let params = get_expansion_testing_params();
+    let mut seeded_rng = get_seeded_rng();
+
+    let target_idx = seeded_rng.gen::<usize>() % (params.db_dim_1 + params.db_dim_2);
+    
+    let mut client = Client::init(&params, &mut seeded_rng);
+    let public_params = client.generate_keys();
+    let query = client.generate_query(target_idx);
+    let (_, db) = generate_random_db_and_get_item(&params, target_idx);
+
+    group.bench_function("server_processing", |b| {
+        b.iter(|| {
+            black_box(process_query(
+                black_box(&params),
+                black_box(&public_params),
+                black_box(&query),
+                black_box(db.as_slice()),
+            ));
+        });
+    });
+}
 
 fn criterion_benchmark(c: &mut Criterion) {
     let mut group = c.benchmark_group("server");
@@ -83,6 +108,11 @@ fn criterion_benchmark(c: &mut Criterion) {
             )
         });
     });
+
+    // full server processing benchmark
+
+    test_full_processing(&mut group);
+
     group.finish();
 }
 
