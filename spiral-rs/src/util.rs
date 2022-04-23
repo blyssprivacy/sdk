@@ -1,6 +1,35 @@
 use crate::{arith::*, params::*, poly::*};
-use rand::{prelude::StdRng, SeedableRng, thread_rng, Rng};
+use rand::{prelude::{SmallRng}, SeedableRng, thread_rng, Rng};
 use serde_json::Value;
+
+pub const CFG_20_256: &'static str = r#"
+        {'n': 2,
+        'nu_1': 9,
+        'nu_2': 6,
+        'p': 256,
+        'q_prime_bits': 20,
+        's_e': 87.62938774292914,
+        't_GSW': 8,
+        't_conv': 4,
+        't_exp': 8,
+        't_exp_right': 56,
+        'instances': 1,
+        'db_item_size': 8192 }
+    "#;
+pub const CFG_16_100000: &'static str = r#"
+        {'n': 2,
+        'nu_1': 10,
+        'nu_2': 6,
+        'p': 512,
+        'q_prime_bits': 21,
+        's_e': 85.83255142749422,
+        't_GSW': 10,
+        't_conv': 4,
+        't_exp': 16,
+        't_exp_right': 56,
+        'instances': 11,
+        'db_item_size': 100000 }
+    "#;
 
 pub fn calc_index(indices: &[usize], lengths: &[usize]) -> usize {
     let mut idx = 0usize;
@@ -76,8 +105,8 @@ pub fn get_seed() -> [u8; 32] {
     thread_rng().gen::<[u8; 32]>()
 }
 
-pub fn get_seeded_rng() -> StdRng {
-    StdRng::from_seed(get_seed())
+pub fn get_seeded_rng() -> SmallRng {
+    SmallRng::from_seed(get_seed())
 }
 
 pub fn get_static_seed() -> [u8; 32] {
@@ -87,8 +116,8 @@ pub fn get_static_seed() -> [u8; 32] {
     ]
 }
 
-pub fn get_static_seeded_rng() -> StdRng {
-    StdRng::from_seed(get_static_seed())
+pub fn get_static_seeded_rng() -> SmallRng {
+    SmallRng::from_seed(get_static_seed())
 }
 
 pub const fn get_empty_params() -> Params {

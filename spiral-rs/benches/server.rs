@@ -6,32 +6,61 @@ use pprof::criterion::{Output, PProfProfiler};
 use rand::Rng;
 use spiral_rs::aligned_memory::AlignedMemory64;
 use spiral_rs::client::*;
+use spiral_rs::params::*;
 use spiral_rs::poly::*;
 use spiral_rs::server::*;
 use spiral_rs::util::*;
 use std::time::Duration;
 
+pub fn generate_random_incorrect_db(params: &Params) -> AlignedMemory64 {
+    let instances = params.instances;
+    let trials = params.n * params.n;
+    let dim0 = 1 << params.db_dim_1;
+    let num_per = 1 << params.db_dim_2;
+    let num_items = dim0 * num_per;
+    let db_size_words = instances * trials * num_items * params.poly_len;
+    let mut out = AlignedMemory64::new(db_size_words);
+    let out_mut_slice = out.as_mut_slice();
+    let mut rng = get_seeded_rng();
+    for i in 0..out_mut_slice.len() {
+        out_mut_slice[i] = rng.gen();
+    }
+    out
+}
+
 fn test_full_processing(group: &mut BenchmarkGroup<WallTime>) {
-    let params = get_expansion_testing_params();
-    let mut seeded_rng = get_seeded_rng();
+    // let names = ["server_processing_20_256", "server_processing_16_100000"];
+    // let cfgs = [CFG_20_256, CFG_16_100000];
+    let names = ["server_processing_16_100000"];
+    let cfgs = [CFG_16_100000];
 
-    let target_idx = seeded_rng.gen::<usize>() % (params.db_dim_1 + params.db_dim_2);
-    
-    let mut client = Client::init(&params, &mut seeded_rng);
-    let public_params = client.generate_keys();
-    let query = client.generate_query(target_idx);
-    let (_, db) = generate_random_db_and_get_item(&params, target_idx);
+    for i in 0..names.len() {
+        let name = names[i];
+        let cfg = cfgs[i];
+        let params = params_from_json(&cfg.replace("'", "\""));
+        let mut seeded_rng = get_seeded_rng();
 
-    group.bench_function("server_processing", |b| {
-        b.iter(|| {
-            black_box(process_query(
-                black_box(&params),
-                black_box(&public_params),
-                black_box(&query),
-                black_box(db.as_slice()),
-            ));
+        let target_idx = seeded_rng.gen::<usize>() % (params.db_dim_1 + params.db_dim_2);
+        
+        let mut client = Client::init(&params, &mut seeded_rng);
+        let public_params = client.generate_keys();
+        let query = client.generate_query(target_idx);
+
+        println!("Generating database...");
+        let db = generate_random_incorrect_db(&params);
+        println!("Done generating database.");
+
+        group.bench_function(name, |b| {
+            b.iter(|| {
+                black_box(process_query(
+                    black_box(&params),
+                    black_box(&public_params),
+                    black_box(&query),
+                    black_box(db.as_slice()),
+                ));
+            });
         });
-    });
+    }
 }
 
 fn criterion_benchmark(c: &mut Criterion) {
