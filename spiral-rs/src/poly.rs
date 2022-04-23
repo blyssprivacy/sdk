@@ -143,7 +143,9 @@ impl<'a> PolyMatrix<'a> for PolyMatrixRaw<'a> {
 impl<'a> Clone for PolyMatrixRaw<'a> {
     fn clone(&self) -> Self {
         let mut data_clone = AlignedMemory64::new(self.data.len());
-        data_clone.as_mut_slice().copy_from_slice(self.data.as_slice());
+        data_clone
+            .as_mut_slice()
+            .copy_from_slice(self.data.as_slice());
         PolyMatrixRaw {
             params: self.params,
             rows: self.rows,
@@ -315,7 +317,9 @@ impl<'a> PolyMatrix<'a> for PolyMatrixNTT<'a> {
 impl<'a> Clone for PolyMatrixNTT<'a> {
     fn clone(&self) -> Self {
         let mut data_clone = AlignedMemory64::new(self.data.len());
-        data_clone.as_mut_slice().copy_from_slice(self.data.as_slice());
+        data_clone
+            .as_mut_slice()
+            .copy_from_slice(self.data.as_slice());
         PolyMatrixNTT {
             params: self.params,
             rows: self.rows,

@@ -431,11 +431,11 @@ pub fn rescale(a: u64, inp_mod: u64, out_mod: u64) -> u64 {
     }
     let sign: i64 = if inp_val >= 0 { 1 } else { -1 };
     let val = (inp_val as i128) * (out_mod as i128);
-    let mut result = (val + (sign*(inp_mod_i64/2)) as i128) / (inp_mod as i128);
-    result = (result + ((inp_mod/out_mod)*out_mod) as i128 + (2*out_mod_i128)) % out_mod_i128;
+    let mut result = (val + (sign * (inp_mod_i64 / 2)) as i128) / (inp_mod as i128);
+    result = (result + ((inp_mod / out_mod) * out_mod) as i128 + (2 * out_mod_i128)) % out_mod_i128;
 
     assert!(result >= 0);
-    
+
     ((result + out_mod_i128) % out_mod_i128) as u64
 }
 

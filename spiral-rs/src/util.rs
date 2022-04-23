@@ -1,5 +1,5 @@
 use crate::{arith::*, params::*, poly::*};
-use rand::{prelude::{SmallRng}, SeedableRng, thread_rng, Rng};
+use rand::{prelude::SmallRng, thread_rng, Rng, SeedableRng};
 use serde_json::Value;
 
 pub const CFG_20_256: &'static str = r#"

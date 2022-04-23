@@ -1,5 +1,5 @@
-use criterion::BenchmarkGroup;
 use criterion::measurement::WallTime;
+use criterion::BenchmarkGroup;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 use pprof::criterion::{Output, PProfProfiler};
 
@@ -41,7 +41,7 @@ fn test_full_processing(group: &mut BenchmarkGroup<WallTime>) {
         let mut seeded_rng = get_seeded_rng();
 
         let target_idx = seeded_rng.gen::<usize>() % (params.db_dim_1 + params.db_dim_2);
-        
+
         let mut client = Client::init(&params, &mut seeded_rng);
         let public_params = client.generate_keys();
         let query = client.generate_query(target_idx);
@@ -113,7 +113,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     for i in 0..db_size_words {
         db[i] = seeded_rng.gen();
     }
-    
+
     let v_reg_sz = dim0 * 2 * params.poly_len;
     let mut v_reg_reoriented = AlignedMemory64::new(v_reg_sz);
     for i in 0..v_reg_sz {
@@ -132,8 +132,8 @@ fn criterion_benchmark(c: &mut Criterion) {
                 black_box(db.as_slice()),
                 black_box(v_reg_reoriented.as_slice()),
                 black_box(&params),
-                black_box(dim0), 
-                black_box(num_per)
+                black_box(dim0),
+                black_box(num_per),
             )
         });
     });
