@@ -31,6 +31,18 @@ impl<const ALIGN: usize> AlignedMemory<{ ALIGN }> {
         }
     }
 
+    // pub fn from(data: &[u8]) -> Self {
+    //     let sz_u64 = (data.len() + size_of::<u64>() - 1) / size_of::<u64>();
+    //     let mut out = Self::new(sz_u64);
+    //     let out_slice = out.as_mut_slice();
+    //     let mut i = 0;
+    //     for chunk in data.chunks(size_of::<u64>()) {
+    //         out_slice[i] = u64::from_ne_bytes(chunk);
+    //         i += 1;
+    //     }
+    //     out
+    // }
+
     pub fn as_slice(&self) -> &[u64] {
         unsafe { from_raw_parts(self.p, self.sz_u64) }
     }
@@ -51,6 +63,9 @@ impl<const ALIGN: usize> AlignedMemory<{ ALIGN }> {
         self.sz_u64
     }
 }
+
+unsafe impl<const ALIGN: usize> Send for AlignedMemory<{ ALIGN }> {}
+unsafe impl<const ALIGN: usize> Sync for AlignedMemory<{ ALIGN }> {}
 
 impl<const ALIGN: usize> Drop for AlignedMemory<{ ALIGN }> {
     fn drop(&mut self) {

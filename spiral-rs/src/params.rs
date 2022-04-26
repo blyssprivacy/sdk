@@ -1,3 +1,5 @@
+use std::mem::size_of;
+
 use crate::{arith::*, ntt::*, number_theory::*, poly::*};
 
 pub const MAX_MODULI: usize = 4;
@@ -42,7 +44,7 @@ pub static Q2_VALUES: [u64; 37] = [
     68718428161,
 ];
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub struct Params {
     pub poly_len: usize,
     pub poly_len_log2: usize,
@@ -108,8 +110,54 @@ impl Params {
         (1, 1)
     }
 
-    pub fn m_conv(&self) -> usize {
-        self.t_conv
+    pub fn num_expanded(&self) -> usize {
+        1 << self.db_dim_1
+    }
+
+    pub fn g(&self) -> usize {
+        let num_bits_to_gen = self.t_gsw * self.db_dim_2 + self.num_expanded();
+        log2_ceil_usize(num_bits_to_gen)
+    }
+
+    pub fn stop_round(&self) -> usize {
+        log2_ceil_usize(self.t_gsw * self.db_dim_2)
+    }
+
+    pub fn setup_bytes(&self) -> usize {
+        let mut sz_polys = 0;
+
+        let packing_sz = (self.n + 1) * self.t_conv;
+        sz_polys += self.n * packing_sz;
+
+        if self.expand_queries {
+            let expansion_left_sz = self.g() * 2 * self.t_exp_left;
+            let expansion_right_sz = (self.stop_round() + 1) * 2 * self.t_exp_right;
+            let conversion_sz = 2 * (2 * self.t_conv);
+
+            sz_polys += expansion_left_sz + expansion_right_sz + conversion_sz;
+        }
+
+        let sz_bytes = sz_polys * self.poly_len * size_of::<u64>();
+        sz_bytes
+    }
+
+    pub fn query_bytes(&self) -> usize {
+        let sz_polys;
+
+        if self.expand_queries {
+            sz_polys = 2;
+        } else {
+            let first_dimension_sz = self.num_expanded() * 2;
+            let further_dimension_sz = self.db_dim_2 * 2 * (2 * self.t_gsw);
+            sz_polys = first_dimension_sz + further_dimension_sz;
+        }
+
+        let sz_bytes = sz_polys * self.poly_len * size_of::<u64>();
+        sz_bytes
+    }
+
+    pub fn query_v_buf_bytes(&self) -> usize {
+        self.num_expanded() * 2 * self.poly_len * size_of::<u64>()
     }
 
     pub fn crt_compose_1(&self, x: u64) -> u64 {

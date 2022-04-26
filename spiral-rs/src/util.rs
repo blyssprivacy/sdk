@@ -7,11 +7,11 @@ pub const CFG_20_256: &'static str = r#"
         'nu_1': 9,
         'nu_2': 6,
         'p': 256,
-        'q_prime_bits': 20,
+        'q2_bits': 20,
         's_e': 87.62938774292914,
-        't_GSW': 8,
+        't_gsw': 8,
         't_conv': 4,
-        't_exp': 8,
+        't_exp_left': 8,
         't_exp_right': 56,
         'instances': 1,
         'db_item_size': 8192 }
@@ -21,11 +21,11 @@ pub const CFG_16_100000: &'static str = r#"
         'nu_1': 10,
         'nu_2': 6,
         'p': 512,
-        'q_prime_bits': 21,
+        'q2_bits': 21,
         's_e': 85.83255142749422,
-        't_GSW': 10,
+        't_gsw': 10,
         't_conv': 4,
-        't_exp': 16,
+        't_exp_left': 16,
         't_exp_right': 56,
         'instances': 11,
         'db_item_size': 100000 }
@@ -87,18 +87,48 @@ pub fn get_expansion_testing_params() -> Params {
         'nu_1': 9,
         'nu_2': 6,
         'p': 256,
-        'q_prime_bits': 20,
-        's_e': 87.62938774292914,
-        't_GSW': 8,
+        'q2_bits': 20,
+        't_gsw': 8,
         't_conv': 4,
-        't_exp': 8,
+        't_exp_left': 8,
         't_exp_right': 56,
         'instances': 1,
         'db_item_size': 8192 }
     "#;
-    let cfg = cfg.replace("'", "\"");
-    let b = params_from_json(&cfg);
-    b
+    params_from_json(&cfg.replace("'", "\""))
+}
+
+pub fn get_fast_expansion_testing_params() -> Params {
+    let cfg = r#"
+        {'n': 2,
+        'nu_1': 6,
+        'nu_2': 2,
+        'p': 256,
+        'q2_bits': 20,
+        't_gsw': 8,
+        't_conv': 4,
+        't_exp_left': 8,
+        't_exp_right': 8,
+        'instances': 1,
+        'db_item_size': 8192 }
+    "#;
+    params_from_json(&cfg.replace("'", "\""))
+}
+
+pub fn get_no_expansion_testing_params() -> Params {
+    let cfg = r#"
+        {'direct_upload': 1,
+        'n': 5,
+        'nu_1': 6,
+        'nu_2': 3,
+        'p': 65536,
+        'q2_bits': 27,
+        't_gsw': 3,
+        't_conv': 56,
+        't_exp_left': 56,
+        't_exp_right': 56}
+    "#;
+    params_from_json(&cfg.replace("'", "\""))
 }
 
 pub fn get_seed() -> [u8; 32] {
@@ -160,12 +190,12 @@ pub fn params_from_json(cfg: &str) -> Params {
     let instances = v["instances"].as_u64().unwrap_or(1) as usize;
     let db_item_size = v["db_item_size"].as_u64().unwrap_or(1) as usize;
     let p = v["p"].as_u64().unwrap();
-    let q2_bits = v["q_prime_bits"].as_u64().unwrap();
-    let t_gsw = v["t_GSW"].as_u64().unwrap() as usize;
+    let q2_bits = v["q2_bits"].as_u64().unwrap();
+    let t_gsw = v["t_gsw"].as_u64().unwrap() as usize;
     let t_conv = v["t_conv"].as_u64().unwrap() as usize;
-    let t_exp_left = v["t_exp"].as_u64().unwrap() as usize;
+    let t_exp_left = v["t_exp_left"].as_u64().unwrap() as usize;
     let t_exp_right = v["t_exp_right"].as_u64().unwrap() as usize;
-    let do_expansion = v.get("kinda_direct_upload").is_none();
+    let do_expansion = v.get("direct_upload").is_none();
     Params::init(
         2048,
         &vec![268369921u64, 249561089u64],
@@ -264,11 +294,11 @@ mod test {
             'nu_1': 9,
             'nu_2': 6,
             'p': 256,
-            'q_prime_bits': 20,
+            'q2_bits': 20,
             's_e': 87.62938774292914,
-            't_GSW': 8,
+            't_gsw': 8,
             't_conv': 4,
-            't_exp': 8,
+            't_exp_left': 8,
             't_exp_right': 56,
             'instances': 1,
             'db_item_size': 2048 }

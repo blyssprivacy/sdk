@@ -2,7 +2,20 @@ use crate::{
     arith::*, discrete_gaussian::*, gadget::*, number_theory::*, params::*, poly::*, util::*,
 };
 use rand::Rng;
-use std::iter::once;
+use std::{iter::once, mem::size_of};
+
+fn new_vec_raw<'a>(
+    params: &'a Params,
+    num: usize,
+    rows: usize,
+    cols: usize,
+) -> Vec<PolyMatrixRaw<'a>> {
+    let mut v = Vec::with_capacity(num);
+    for _ in 0..num {
+        v.push(PolyMatrixRaw::zero(params, rows, cols));
+    }
+    v
+}
 
 fn serialize_polymatrix(vec: &mut Vec<u8>, a: &PolyMatrixRaw) {
     for i in 0..a.rows * a.cols * a.params.poly_len {
@@ -14,6 +27,26 @@ fn serialize_vec_polymatrix(vec: &mut Vec<u8>, a: &Vec<PolyMatrixRaw>) {
     for i in 0..a.len() {
         serialize_polymatrix(vec, &a[i]);
     }
+}
+
+fn mat_sz_bytes(a: &PolyMatrixRaw) -> usize {
+    a.rows * a.cols * a.params.poly_len * size_of::<u64>()
+}
+
+fn deserialize_polymatrix(a: &mut PolyMatrixRaw, data: &[u8]) -> usize {
+    for (i, chunk) in data.chunks(size_of::<u64>()).enumerate() {
+        a.data[i] = u64::from_ne_bytes(chunk.try_into().unwrap());
+    }
+    mat_sz_bytes(a)
+}
+
+fn deserialize_vec_polymatrix(a: &mut Vec<PolyMatrixRaw>, data: &[u8]) -> usize {
+    let mut chunks = data.chunks(mat_sz_bytes(&a[0]));
+    let mut bytes_read = 0;
+    for i in 0..a.len() {
+        bytes_read += deserialize_polymatrix(&mut a[i], chunks.next().unwrap());
+    }
+    bytes_read
 }
 
 pub struct PublicParameters<'a> {
@@ -52,6 +85,10 @@ impl<'a> PublicParameters<'a> {
         Some(v.as_ref()?.iter().map(from_ntt_alloc).collect())
     }
 
+    fn to_ntt_alloc_vec(v: &Vec<PolyMatrixRaw<'a>>) -> Option<Vec<PolyMatrixNTT<'a>>> {
+        Some(v.iter().map(to_ntt_alloc).collect())
+    }
+
     pub fn to_raw(&self) -> Vec<Option<Vec<PolyMatrixRaw>>> {
         vec![
             Self::from_ntt_alloc_vec(&self.v_packing),
@@ -69,6 +106,41 @@ impl<'a> PublicParameters<'a> {
             }
         }
         data
+    }
+
+    pub fn deserialize(params: &'a Params, data: &[u8]) -> Self {
+        assert_eq!(params.setup_bytes(), data.len());
+
+        let mut idx = 0;
+
+        let mut v_packing = new_vec_raw(params, params.n, params.n + 1, params.t_conv);
+        idx += deserialize_vec_polymatrix(&mut v_packing, &data[idx..]);
+
+        if params.expand_queries {
+            let mut v_expansion_left = new_vec_raw(params, params.g(), 2, params.t_exp_left);
+            idx += deserialize_vec_polymatrix(&mut v_expansion_left, &data[idx..]);
+
+            let mut v_expansion_right =
+                new_vec_raw(params, params.stop_round() + 1, 2, params.t_exp_right);
+            idx += deserialize_vec_polymatrix(&mut v_expansion_right, &data[idx..]);
+
+            let mut v_conversion = new_vec_raw(params, 1, 2, 2 * params.t_conv);
+            _ = deserialize_vec_polymatrix(&mut v_conversion, &data[idx..]);
+
+            Self {
+                v_packing: Self::to_ntt_alloc_vec(&v_packing).unwrap(),
+                v_expansion_left: Self::to_ntt_alloc_vec(&v_expansion_left),
+                v_expansion_right: Self::to_ntt_alloc_vec(&v_expansion_right),
+                v_conversion: Self::to_ntt_alloc_vec(&v_conversion),
+            }
+        } else {
+            Self {
+                v_packing: Self::to_ntt_alloc_vec(&v_packing).unwrap(),
+                v_expansion_left: None,
+                v_expansion_right: None,
+                v_conversion: None,
+            }
+        }
     }
 }
 
@@ -104,6 +176,27 @@ impl<'a> Query<'a> {
             }
         }
         data
+    }
+
+    pub fn deserialize(params: &'a Params, data: &[u8]) -> Self {
+        let mut out = Query::empty();
+        if params.expand_queries {
+            let mut ct = PolyMatrixRaw::zero(params, 2, 1);
+            deserialize_polymatrix(&mut ct, data);
+            out.ct = Some(ct);
+        } else {
+            let v_buf_bytes = params.query_v_buf_bytes();
+            let v_buf = (&data[..v_buf_bytes])
+                .chunks(size_of::<u64>())
+                .map(|x| u64::from_ne_bytes(x.try_into().unwrap()))
+                .collect();
+            out.v_buf = Some(v_buf);
+
+            let mut v_ct = new_vec_raw(params, params.db_dim_2, 2, 2 * params.t_gsw);
+            deserialize_vec_polymatrix(&mut v_ct, &data[v_buf_bytes..]);
+            out.v_ct = Some(v_ct);
+        }
+        out
     }
 }
 
@@ -261,16 +354,15 @@ impl<'a, TRng: Rng> Client<'a, TRng> {
         self.sk_gsw_full = matrix_with_identity(&self.sk_gsw);
         self.sk_reg_full = matrix_with_identity(&self.sk_reg);
         let sk_reg_ntt = to_ntt_alloc(&self.sk_reg);
-        let m_conv = params.m_conv();
 
         let mut pp = PublicParameters::init(params);
 
         // Params for packing
-        let gadget_conv = build_gadget(params, 1, m_conv);
+        let gadget_conv = build_gadget(params, 1, params.t_conv);
         let gadget_conv_ntt = to_ntt_alloc(&gadget_conv);
         for i in 0..params.n {
             let scaled = scalar_multiply_alloc(&sk_reg_ntt, &gadget_conv_ntt);
-            let mut ag = PolyMatrixNTT::zero(params, params.n, m_conv);
+            let mut ag = PolyMatrixNTT::zero(params, params.n, params.t_conv);
             ag.copy_into(&scaled, i, 0);
             let w = self.encrypt_matrix_gsw(&ag);
             pp.v_packing.push(w);
@@ -278,21 +370,20 @@ impl<'a, TRng: Rng> Client<'a, TRng> {
 
         if params.expand_queries {
             // Params for expansion
-
             pp.v_expansion_left = Some(self.generate_expansion_params(self.g, params.t_exp_left));
             pp.v_expansion_right =
                 Some(self.generate_expansion_params(self.stop_round + 1, params.t_exp_right));
 
             // Params for converison
-            let g_conv = build_gadget(params, 2, 2 * m_conv);
+            let g_conv = build_gadget(params, 2, 2 * params.t_conv);
             let sk_reg_ntt = self.sk_reg.ntt();
             let sk_reg_squared_ntt = &sk_reg_ntt * &sk_reg_ntt;
             pp.v_conversion = Some(Vec::from_iter(once(PolyMatrixNTT::zero(
                 params,
                 2,
-                2 * m_conv,
+                2 * params.t_conv,
             ))));
-            for i in 0..2 * m_conv {
+            for i in 0..2 * params.t_conv {
                 let sigma;
                 if i % 2 == 0 {
                     let val = g_conv.get_poly(0, i)[0];
@@ -465,7 +556,6 @@ impl<'a, TRng: Rng> Client<'a, TRng> {
         let bytes_per_chunk = f64::ceil(params.db_item_size as f64 / chunks as f64) as usize;
         let logp = log2(params.pt_modulus);
         let modp_words_per_chunk = f64::ceil((bytes_per_chunk * 8) as f64 / logp as f64) as usize;
-        println!("modp_words_per_chunk {:?}", modp_words_per_chunk);
         result.to_vec(p_bits as usize, modp_words_per_chunk)
     }
 }
@@ -502,10 +592,10 @@ mod test {
         let mut seeded_rng = get_static_seeded_rng();
         let mut client = Client::init(&params, &mut seeded_rng);
 
-        let public_params = client.generate_keys();
+        let pub_params = client.generate_keys();
 
         assert_first8(
-            public_params.v_conversion.unwrap()[0].data.as_slice(),
+            pub_params.v_conversion.unwrap()[0].data.as_slice(),
             [
                 122680182, 165987256, 137892309, 95732358, 221787731, 13233184, 156136764,
                 259944211,
@@ -525,5 +615,51 @@ mod test {
                 2,
             ],
         );
+    }
+
+    fn public_parameters_serialization_is_correct_for_params(params: Params) {
+        let mut seeded_rng = get_static_seeded_rng();
+        let mut client = Client::init(&params, &mut seeded_rng);
+        let pub_params = client.generate_keys();
+        assert_eq!(client.stop_round, params.stop_round());
+
+        let serialized1 = pub_params.serialize();
+        let deserialized1 = PublicParameters::deserialize(&params, &serialized1);
+        let serialized2 = deserialized1.serialize();
+
+        assert_eq!(serialized1, serialized2);
+    }
+
+    #[test]
+    fn public_parameters_serialization_is_correct() {
+        public_parameters_serialization_is_correct_for_params(get_params())
+    }
+
+    #[test]
+    fn no_expansion_public_parameters_serialization_is_correct() {
+        public_parameters_serialization_is_correct_for_params(get_no_expansion_testing_params())
+    }
+
+    fn query_serialization_is_correct_for_params(params: Params) {
+        let mut seeded_rng = get_static_seeded_rng();
+        let mut client = Client::init(&params, &mut seeded_rng);
+        _ = client.generate_keys();
+        let query = client.generate_query(1);
+
+        let serialized1 = query.serialize();
+        let deserialized1 = Query::deserialize(&params, &serialized1);
+        let serialized2 = deserialized1.serialize();
+
+        assert_eq!(serialized1, serialized2);
+    }
+
+    #[test]
+    fn query_serialization_is_correct() {
+        query_serialization_is_correct_for_params(get_params())
+    }
+
+    #[test]
+    fn no_expansion_query_serialization_is_correct() {
+        query_serialization_is_correct_for_params(get_no_expansion_testing_params())
     }
 }

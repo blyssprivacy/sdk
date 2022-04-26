@@ -5,7 +5,6 @@ use std::io::BufReader;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
-use std::mem::size_of;
 
 use crate::aligned_memory::*;
 use crate::arith::*;
@@ -330,7 +329,6 @@ pub fn generate_random_db_and_get_item<'a>(
     let db_size_words = instances * trials * num_items * params.poly_len;
     let mut v = AlignedMemory64::new(db_size_words);
 
-    let mut tmp_item_ntt = PolyMatrixNTT::zero(params, 1, 1);
     let mut item = PolyMatrixRaw::zero(params, params.n, params.n);
 
     for instance in 0..instances {
@@ -379,9 +377,6 @@ pub fn load_item_from_file<'a>(
     let db_item_size = params.db_item_size;
     let instances = params.instances;
     let trials = params.n * params.n;
-    let dim0 = 1 << params.db_dim_1;
-    let num_per = 1 << params.db_dim_2;
-    let num_items = dim0 * num_per;
 
     let chunks = instances * trials;
     let bytes_per_chunk = f64::ceil(db_item_size as f64 / chunks as f64) as usize;
@@ -469,11 +464,11 @@ pub fn load_preprocessed_db_from_file(params: &Params, file: &mut File) -> Align
     let mut v = AlignedMemory64::new(db_size_words);
     let v_mut_slice = v.as_mut_slice();
 
-    let mut reader = BufReader::new(file);
+    let mut reader = BufReader::with_capacity(1 << 18, file);
     let mut buf = [0u8; 8];
     for i in 0..db_size_words {
         if i % 1000000000 == 0 {
-            println!("{} GB loaded", i);
+            println!("{} GB loaded", i / 1000000000);
         }
         reader.read(&mut buf).unwrap();
         v_mut_slice[i] = u64::from_ne_bytes(buf);
@@ -757,11 +752,7 @@ mod test {
     const TEST_PREPROCESSED_DB_PATH: &'static str = "/home/samir/wiki/enwiki-20220320.dbp";
 
     fn get_params() -> Params {
-        let mut params = get_expansion_testing_params();
-        params.db_dim_1 = 6;
-        params.db_dim_2 = 2;
-        params.t_exp_right = 8;
-        params
+        get_fast_expansion_testing_params()
     }
 
     fn dec_reg<'a>(
