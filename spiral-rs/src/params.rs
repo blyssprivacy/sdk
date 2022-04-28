@@ -160,6 +160,20 @@ impl Params {
         self.num_expanded() * 2 * self.poly_len * size_of::<u64>()
     }
 
+    pub fn bytes_per_chunk(&self) -> usize {
+        let trials = self.n * self.n;
+        let chunks = self.instances * trials;
+        let bytes_per_chunk = f64::ceil(self.db_item_size as f64 / chunks as f64) as usize;
+        bytes_per_chunk
+    }
+
+    pub fn modp_words_per_chunk(&self) -> usize {
+        let bytes_per_chunk = self.bytes_per_chunk();
+        let logp = log2(self.pt_modulus);
+        let modp_words_per_chunk = f64::ceil((bytes_per_chunk * 8) as f64 / logp as f64) as usize;
+        modp_words_per_chunk
+    }
+
     pub fn crt_compose_1(&self, x: u64) -> u64 {
         assert_eq!(self.crt_count, 1);
         x

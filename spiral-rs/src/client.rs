@@ -159,7 +159,7 @@ impl<'a> Query<'a> {
         }
     }
 
-    pub fn serialize(&self) -> Vec<u8> {
+    pub fn serialize(&self) -> Vec<u8> {        
         let mut data = Vec::new();
         if self.ct.is_some() {
             let ct = self.ct.as_ref().unwrap();
@@ -179,6 +179,8 @@ impl<'a> Query<'a> {
     }
 
     pub fn deserialize(params: &'a Params, data: &[u8]) -> Self {
+        assert_eq!(params.query_bytes(), data.len());
+
         let mut out = Query::empty();
         if params.expand_queries {
             let mut ct = PolyMatrixRaw::zero(params, 2, 1);
@@ -550,13 +552,8 @@ impl<'a, TRng: Rng> Client<'a, TRng> {
             }
         }
 
-        // println!("{:?}", result.data);
-        let trials = params.n * params.n;
-        let chunks = params.instances * trials;
-        let bytes_per_chunk = f64::ceil(params.db_item_size as f64 / chunks as f64) as usize;
-        let logp = log2(params.pt_modulus);
-        let modp_words_per_chunk = f64::ceil((bytes_per_chunk * 8) as f64 / logp as f64) as usize;
-        result.to_vec(p_bits as usize, modp_words_per_chunk)
+        // println!("{:?}", result.data.as_slice().to_vec());
+        result.to_vec(p_bits as usize, params.modp_words_per_chunk())
     }
 }
 
@@ -582,7 +579,9 @@ mod test {
         let client = Client::init(&params, &mut rng);
 
         assert_eq!(client.stop_round, 5);
+        assert_eq!(client.stop_round, params.stop_round());
         assert_eq!(client.g, 10);
+        assert_eq!(client.g, params.g());
         assert_eq!(*client.params, params);
     }
 
@@ -617,6 +616,10 @@ mod test {
         );
     }
 
+    fn get_vec(v: &Vec<PolyMatrixNTT>) -> Vec<u64> {
+        v.iter().map(|d| d.as_slice().to_vec()).flatten().collect()
+    }
+
     fn public_parameters_serialization_is_correct_for_params(params: Params) {
         let mut seeded_rng = get_static_seeded_rng();
         let mut client = Client::init(&params, &mut seeded_rng);
@@ -628,11 +631,36 @@ mod test {
         let serialized2 = deserialized1.serialize();
 
         assert_eq!(serialized1, serialized2);
+        assert_eq!(get_vec(&pub_params.v_packing), get_vec(&deserialized1.v_packing));
+        assert_eq!(get_vec(&pub_params.v_conversion.unwrap()), get_vec(&deserialized1.v_conversion.unwrap()));
+        assert_eq!(get_vec(&pub_params.v_expansion_left.unwrap()), get_vec(&deserialized1.v_expansion_left.unwrap()));
+        assert_eq!(get_vec(&pub_params.v_expansion_right.unwrap()), get_vec(&deserialized1.v_expansion_right.unwrap()));
     }
 
     #[test]
     fn public_parameters_serialization_is_correct() {
         public_parameters_serialization_is_correct_for_params(get_params())
+    }
+
+    #[test]
+    fn real_public_parameters_serialization_is_correct() {
+        let cfg_expand = r#"
+            {'n': 2,
+            'nu_1': 10,
+            'nu_2': 6,
+            'p': 512,
+            'q2_bits': 21,
+            's_e': 85.83255142749422,
+            't_gsw': 10,
+            't_conv': 4,
+            't_exp_left': 16,
+            't_exp_right': 56,
+            'instances': 11,
+            'db_item_size': 100000 }
+        "#;
+        let cfg = cfg_expand.replace("'", "\"");
+        let params = params_from_json(&cfg);
+        public_parameters_serialization_is_correct_for_params(params)
     }
 
     #[test]

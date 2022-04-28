@@ -15,6 +15,7 @@ getrandom = { features = ["js"], version = "0.2.6" }
 rand = { version = "0.8.5", features = ["small_rng"] }
 reqwest = { version = "0.11", features = ["blocking"] }
 serde_json = "1.0"
+rayon = "1.5.2"
 actix-web = { version = "4.0.1", features = ["openssl"], optional = true }
 openssl = { version = "0.10", features = ["v110"], optional = true }
 futures = { version = "0.3", optional = true }
@@ -37,6 +38,6 @@ name = "poly"
 harness = false
 
 [profile.release]
-lto = "fat"
-codegen-units = 1
-panic = "abort"
+# lto = "fat"
+# codegen-units = 1
+# panic = "abort"
