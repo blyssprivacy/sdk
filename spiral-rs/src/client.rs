@@ -159,7 +159,7 @@ impl<'a> Query<'a> {
         }
     }
 
-    pub fn serialize(&self) -> Vec<u8> {        
+    pub fn serialize(&self) -> Vec<u8> {
         let mut data = Vec::new();
         if self.ct.is_some() {
             let ct = self.ct.as_ref().unwrap();
@@ -631,10 +631,22 @@ mod test {
         let serialized2 = deserialized1.serialize();
 
         assert_eq!(serialized1, serialized2);
-        assert_eq!(get_vec(&pub_params.v_packing), get_vec(&deserialized1.v_packing));
-        assert_eq!(get_vec(&pub_params.v_conversion.unwrap()), get_vec(&deserialized1.v_conversion.unwrap()));
-        assert_eq!(get_vec(&pub_params.v_expansion_left.unwrap()), get_vec(&deserialized1.v_expansion_left.unwrap()));
-        assert_eq!(get_vec(&pub_params.v_expansion_right.unwrap()), get_vec(&deserialized1.v_expansion_right.unwrap()));
+        assert_eq!(
+            get_vec(&pub_params.v_packing),
+            get_vec(&deserialized1.v_packing)
+        );
+        assert_eq!(
+            get_vec(&pub_params.v_conversion.unwrap()),
+            get_vec(&deserialized1.v_conversion.unwrap())
+        );
+        assert_eq!(
+            get_vec(&pub_params.v_expansion_left.unwrap()),
+            get_vec(&deserialized1.v_expansion_left.unwrap())
+        );
+        assert_eq!(
+            get_vec(&pub_params.v_expansion_right.unwrap()),
+            get_vec(&deserialized1.v_expansion_right.unwrap())
+        );
     }
 
     #[test]
