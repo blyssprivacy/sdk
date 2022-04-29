@@ -3,14 +3,14 @@ import init, {
     generate_public_parameters,
     generate_query,
     decode_response
-} from './pkg/client.js';
+} from '../pkg/client.js';
 
-import './js/bz2.js';
-import './js/wtf_wikipedia.js';
-import './js/wtf-plugin-html.js';
+import './bz2.js';
+import './wtf_wikipedia.js';
+import './wtf-plugin-html.js';
 wtf.extend(wtfHtml);
 
-const API_URL = "https://spiralwiki.com:8088";
+const API_URL = "";
 const SETUP_URL = "/setup";
 const QUERY_URL = "/query";
 
@@ -18,9 +18,12 @@ async function postData(url = '', data = {}, json = false) {
     const response = await fetch(url, {
       method: 'POST',
       mode: 'cors',
-      cache: 'no-cache',
+      cache: 'no-store',
       credentials: 'omit',
-      headers: { 'Content-Type': 'application/octet-stream' },
+      headers: { 
+          'Content-Type': 'application/octet-stream',
+          'Content-Length': data.length
+      },
       redirect: 'follow',
       referrerPolicy: 'no-referrer',
       body: data
@@ -36,7 +39,7 @@ async function postData(url = '', data = {}, json = false) {
 async function getData(url = '', json = false) {
     const response = await fetch(url, {
       method: 'GET',
-      cache: 'no-cache',
+      cache: 'default',
       credentials: 'omit',
       redirect: 'follow',
       referrerPolicy: 'no-referrer'
@@ -54,25 +57,22 @@ const api = {
     query: async (data) => postData(API_URL + QUERY_URL, data, false)
 }
 
+function extractTitle(article) {
+    var title = "";
+    var endTitleTagIdx = article.indexOf("</title>");
+    if (endTitleTagIdx != -1) {
+        title = article.slice(0, endTitleTagIdx);
+    }
+    return title;
+}
+
 function preprocessWikiText(wikiText, targetTitle) {
     targetTitle = targetTitle.toLowerCase();
-
-    wikiText = wikiText
-        // .replace(/<title>(.*?)<\/title><text>/gi, "<text>\n\n<h1>$1</h1>\n\n")
-        .replace(/&lt;ref&gt;[\s\S]*?&lt;\/ref&gt;/gi, "")
-        .replace(/&lt;ref[\s\S]*?&lt;\/ref&gt;/gi, "")
-        .replace(/&lt;ref[\s\S]*?\/&gt;/gi, "")
-        .replace(/&lt;![\s\S]*?--&gt;/gi, "");
     
     let articles = wikiText.split("<title>")
         .filter(d => d.length > 10)
         .filter(d => {
-            var title = "";
-            var endTitleTagIdx = d.indexOf("</title>");
-            if (endTitleTagIdx != -1) {
-                title = d.slice(0, endTitleTagIdx);
-            }
-            return title.toLowerCase() == targetTitle;
+            return extractTitle(d).toLowerCase() == targetTitle;
         });
 
     if (articles.length === 0) {
@@ -81,6 +81,7 @@ function preprocessWikiText(wikiText, targetTitle) {
     }
 
     let d = articles[0];
+    let title = extractTitle(d);
     let articlePageMatch = d.match(/<text>/);
     if (!articlePageMatch) {
         console.log("error decoding...");
@@ -89,7 +90,17 @@ function preprocessWikiText(wikiText, targetTitle) {
     let startPageContentIdx = articlePageMatch.index + articlePageMatch[0].length;
     let endPageContentIdx = d.slice(startPageContentIdx).indexOf("</text>")
     d = d.slice(startPageContentIdx, endPageContentIdx);
-    return d;
+
+    d = d
+        .replace(/&lt;ref[\s\S]{0,500}?&lt;\/ref&gt;/gi, "")
+        .replace(/&lt;ref[\s\S]{0,500}?\/&gt;/gi, "")
+        .replace(/&lt;ref&gt;[\s\S]{0,500}?&lt;\/ref&gt;/gi, "")
+        .replace(/&lt;![\s\S]{0,500}?--&gt;/gi, "");
+
+    return {
+        "wikiText": d,
+        "title": title
+    };
 }
 function postProcessWikiHTML(wikiHTML, title) {
     wikiHTML = wikiHTML.replace(/<img.*?\/>/g, "");
@@ -100,10 +111,9 @@ function postProcessWikiHTML(wikiHTML, title) {
 function resultToHtml(result, title) {
     let decompressedData = bz2.decompress(result);
     let wikiText = new TextDecoder("utf-8").decode(decompressedData);
-    wikiText = preprocessWikiText(wikiText, title);
-    console.log(wikiText);
-    let wikiHTML = wtf(wikiText).html();
-    wikiHTML = postProcessWikiHTML(wikiHTML, title);
+    let processedData = preprocessWikiText(wikiText, title);
+    let wikiHTML = wtf(processedData.wikiText).html();
+    wikiHTML = postProcessWikiHTML(wikiHTML, processedData.title);
     return "<article>" + wikiHTML + "</article>";    
 }
 window.resultToHtml = resultToHtml;
@@ -139,7 +149,7 @@ function clearExistingSuggestionsBox() {
 }
 
 function hasTitle(title) {
-    return window.title_index.hasOwnProperty(title) && window.title_index[title] < window.numArticles;
+    return title && window.title_index.hasOwnProperty(title) && window.title_index[title] < window.numArticles;
 }
 
 function followRedirects(title) {
@@ -153,7 +163,8 @@ function followRedirects(title) {
 }
 
 function queryTitleOnClick(title) {
-    return async () => {
+    return async (e) => {
+        e.preventDefault();
         queryTitle(title);
         return false;
     }
@@ -184,7 +195,7 @@ async function query(targetIdx, title) {
         let publicParameters = generate_public_parameters(window.client);
         console.log(`done (${publicParameters.length} bytes)`);
         console.log("Sending public parameters...");
-        let setup_resp = await api.setup(publicParameters);
+        let setup_resp = await api.setup(new Blob([publicParameters.buffer]));
         console.log("sent.");
         console.log(setup_resp);
         window.id = setup_resp["id"];
@@ -231,15 +242,17 @@ async function run() {
     let makeQueryBtn = document.querySelector('#make_query');
     let searchBox = document.querySelector(".searchbox");
 
-    window.sample_data = await getData("sample.dat");
-    window.title_index = await getData("enwiki-20220320-index.json", true);
+    let title_index_p = getData("data/enwiki-20220320-index.json", true);
+    let redirect_backlinks_p = getData("data/redirects-old.json", true);
+
+    window.title_index = await title_index_p;
     let keys = Object.keys(window.title_index);
     for (var i = 0; i < keys.length; i++) {
         let key = keys[i];
         window.title_index[key] /= window.articleSize; 
         window.title_index[key.toLowerCase()] = window.title_index[key];
     }
-    let redirect_backlinks = await getData("redirects-old.json", true);
+    let redirect_backlinks = await redirect_backlinks_p;
     keys = Object.keys(redirect_backlinks);
     window.redirects = {}
     for (var i = 0; i < keys.length; i++) {

@@ -131,23 +131,20 @@ pub fn get_no_expansion_testing_params() -> Params {
     params_from_json(&cfg.replace("'", "\""))
 }
 
-pub fn get_seed() -> [u8; 32] {
-    thread_rng().gen::<[u8; 32]>()
+pub fn get_seed() -> u64 {
+    thread_rng().gen::<u64>()
 }
 
 pub fn get_seeded_rng() -> SmallRng {
-    SmallRng::from_seed(get_seed())
+    SmallRng::seed_from_u64(get_seed())
 }
 
-pub fn get_static_seed() -> [u8; 32] {
-    [
-        1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6,
-        7, 8,
-    ]
+pub fn get_static_seed() -> u64 {
+    0x123456789
 }
 
 pub fn get_static_seeded_rng() -> SmallRng {
-    SmallRng::from_seed(get_static_seed())
+    SmallRng::seed_from_u64(get_static_seed())
 }
 
 pub const fn get_empty_params() -> Params {

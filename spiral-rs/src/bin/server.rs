@@ -1,4 +1,3 @@
-use actix_web::error::PayloadError;
 use futures::StreamExt;
 use spiral_rs::aligned_memory::*;
 use spiral_rs::client::*;
@@ -10,7 +9,13 @@ use std::env;
 use std::fs::File;
 use std::sync::Mutex;
 
-use actix_web::{get, http, post, web, App, HttpServer};
+use actix_cors::Cors;
+use actix_files as fs;
+use actix_http::HttpServiceBuilder;
+use actix_server::{Server, ServerBuilder};
+use actix_service::map_config;
+use actix_web::error::PayloadError;
+use actix_web::{get, http, middleware, post, web, App, HttpServer};
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 
 const CERT_FNAME: &str = "/etc/letsencrypt/live/spiralwiki.com/fullchain.pem";
@@ -28,7 +33,8 @@ async fn get_request_bytes(
 ) -> Result<Vec<u8>, http::Error> {
     let mut bytes = web::BytesMut::new();
     while let Some(item) = body.next().await {
-        bytes.extend_from_slice(&item?);
+        let item_ref = &item?;
+        bytes.extend_from_slice(item_ref);
         if bytes.len() > sz_bytes {
             println!("too big! {}", sz_bytes);
             return Err(PayloadError::Overflow.into());
@@ -56,14 +62,13 @@ async fn index<'a>(data: web::Data<ServerState<'a>>) -> String {
 
 #[post("/setup")]
 async fn setup<'a>(
-    body: web::Payload,
+    body: web::Bytes,
     data: web::Data<ServerState<'a>>,
 ) -> Result<String, http::Error> {
     println!("/setup");
 
     // Parse the request
-    let request_bytes = get_request_bytes(body, data.params.setup_bytes()).await?;
-    let pub_params = PublicParameters::deserialize(data.params, request_bytes.as_slice());
+    let pub_params = PublicParameters::deserialize(data.params, &body);
 
     // Generate a UUID and store it
     let uuid = uuid::Uuid::new_v4();
@@ -130,12 +135,6 @@ async fn main() -> std::io::Result<()> {
     let mut file = File::open(db_preprocessed_path).unwrap();
     let db = load_preprocessed_db_from_file(params, &mut file);
 
-    let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-    builder
-        .set_private_key_file(KEY_FNAME, SslFiletype::PEM)
-        .unwrap();
-    builder.set_certificate_chain_file(CERT_FNAME).unwrap();
-
     let server_state = ServerState {
         params: params,
         db: db,
@@ -143,17 +142,42 @@ async fn main() -> std::io::Result<()> {
     };
     let state = web::Data::new(server_state);
 
-    let res = HttpServer::new(move || {
+    let app_builder = move || {
+        let cors = Cors::default()
+            .allow_any_origin()
+            .allowed_headers([
+                http::header::ORIGIN,
+                http::header::CONTENT_TYPE,
+                http::header::ACCEPT,
+            ])
+            .allow_any_method()
+            .max_age(3600);
+
         App::new()
+            .wrap(middleware::Compress::default())
+            .wrap(cors)
             .app_data(state.clone())
-            .service(index)
+            .app_data(web::PayloadConfig::new(1 << 25))
             .service(setup)
             .service(query)
-    })
-    .bind_openssl("0.0.0.0:8088", builder)?
-    // .bind_openssl("127.0.0.1:7777", builder)?
-    .run()
-    .await;
+            .service(fs::Files::new("/", "../client/static").index_file("index.html"))
+    };
 
-    res
+    Server::build()
+        .bind("http/1", "0.0.0.0:8088", move || {
+            let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
+            builder
+                .set_private_key_file(KEY_FNAME, SslFiletype::PEM)
+                .unwrap();
+            builder.set_certificate_chain_file(CERT_FNAME).unwrap();
+            builder.set_alpn_protos(b"\x08http/1.1").unwrap();
+
+            HttpServiceBuilder::default()
+                .h1(map_config(app_builder(), |_| {
+                    actix_web::dev::AppConfig::default()
+                }))
+                .openssl(builder.build())
+        })?
+        .run()
+        .await
 }
