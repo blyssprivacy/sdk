@@ -14,12 +14,15 @@ use actix_files as fs;
 use actix_http::HttpServiceBuilder;
 use actix_server::{Server, ServerBuilder};
 use actix_service::map_config;
+use actix_service::Service;
 use actix_web::error::PayloadError;
 use actix_web::{get, http, middleware, post, web, App, HttpServer};
 use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
 
 const CERT_FNAME: &str = "/etc/letsencrypt/live/spiralwiki.com/fullchain.pem";
 const KEY_FNAME: &str = "/etc/letsencrypt/live/spiralwiki.com/privkey.pem";
+
+const NO_CACHE_PATHS: [&str; 2] = ["/setup", "/query"];
 
 struct ServerState<'a> {
     params: &'a Params,
@@ -161,10 +164,22 @@ async fn main() -> std::io::Result<()> {
             .service(setup)
             .service(query)
             .service(fs::Files::new("/", "../client/static").index_file("index.html"))
+            .wrap_fn(|req, srv | {
+                let should_cache = !NO_CACHE_PATHS.contains(&req.path());
+                let fut = srv.call(req);
+                async move {
+                    let mut res = fut.await?;
+                    if should_cache {
+                        res.headers_mut()
+                            .insert(http::header::CACHE_CONTROL, http::header::HeaderValue::from_static("private, max-age=31536000"));
+                    }
+                    Ok(res)
+                }
+            })
     };
 
     Server::build()
-        .bind("http/1", "0.0.0.0:8088", move || {
+        .bind("http/1", "0.0.0.0:443", move || {
             let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
             builder
                 .set_private_key_file(KEY_FNAME, SslFiletype::PEM)

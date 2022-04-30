@@ -129,7 +129,7 @@ function showSuggestionsBox(suggestions, query) {
     var htmlSuggestions = '<div class="suggestions">' 
         + suggestions.map(m => "<div>"+addBold(m, query)+"</div>").join('') 
         + "</div>";
-    document.querySelector('.searchbox').insertAdjacentHTML('afterend', htmlSuggestions);
+    document.querySelector('.searchbutton').insertAdjacentHTML('afterend', htmlSuggestions);
     document.querySelectorAll('.suggestions > div').forEach((el) => {
         el.onclick = (e) => {
             document.querySelector(".searchbox").value = el.innerHTML
@@ -162,9 +162,29 @@ function followRedirects(title) {
     }
 }
 
-function queryTitleOnClick(title) {
+function startLoading(message) {
+    window.loading = true;
+    window.started_loading = Date.now();
+    document.querySelector(".loading-icon").classList.remove("hidden");
+    document.querySelector(".loading .message").innerHTML = message+"...";
+    document.querySelector(".loading .message").classList.add("inprogress");
+}
+
+function stopLoading(message) {
+    window.loading = false;
+    document.querySelector(".loading-icon").classList.add("hidden");
+    let seconds = (Date.now() - window.started_loading) / 1000
+    let secondsRounded = Math.round(seconds * 100) / 100;
+    let timingMessage = secondsRounded > 0.01 ? (" Took "+secondsRounded+"s.") : "";
+    document.querySelector(".loading .message").innerHTML = "Done " + message.toLowerCase() + "." + timingMessage;
+    document.querySelector(".loading .message").classList.remove("inprogress");
+}
+
+function queryTitleOnClick(title, displayTitle) {
     return async (e) => {
         e.preventDefault();
+        document.querySelector(".searchbox").value = displayTitle;
+        window.scrollTo(0, 0);
         queryTitle(title);
         return false;
     }
@@ -172,13 +192,14 @@ function queryTitleOnClick(title) {
 
 function enableLinks(element) {
     element.querySelectorAll('a').forEach((el) => {
-        var linkTitle = el.getAttribute("href").slice(2).replace(/_/g, " ").toLowerCase();
+        let displayTitle = el.getAttribute("href").slice(2).replace(/_/g, " ");
+        let linkTitle = displayTitle.toLowerCase();
         if (hasTitle(linkTitle)) {
-            el.onclick = queryTitleOnClick(linkTitle);
+            el.onclick = queryTitleOnClick(linkTitle, displayTitle);
         } else {
             var redirected = followRedirects(linkTitle);
             if (redirected !== null && hasTitle(redirected)) {
-                el.onclick = queryTitleOnClick(redirected);
+                el.onclick = queryTitleOnClick(redirected, displayTitle);
             } else {
                 el.classList.add("broken")
             }
@@ -188,6 +209,7 @@ function enableLinks(element) {
 
 async function query(targetIdx, title) {    
     if (!window.hasSetUp) {
+        startLoading("Uploading setup data");
         console.log("Initializing...");
         window.client = initialize();
         console.log("done");
@@ -200,8 +222,10 @@ async function query(targetIdx, title) {
         console.log(setup_resp);
         window.id = setup_resp["id"];
         window.hasSetUp = true;
+        stopLoading("Uploading setup data");
     }
 
+    startLoading("Loading article");
     console.log("Generating query... ("+targetIdx+")");
     let query = generate_query(window.client, window.id, targetIdx);
     console.log(`done (${query.length} bytes)`);
@@ -225,6 +249,7 @@ async function query(targetIdx, title) {
     outputArea.innerHTML = resultHtml;
 
     enableLinks(outputArea);
+    stopLoading("Loading article");
 }
 
 async function queryTitle(targetTitle) {
@@ -234,7 +259,9 @@ async function queryTitle(targetTitle) {
 }
 
 async function run() {
+    startLoading("Initializing");
     await init();
+    stopLoading("Initializing");
 
     window.numArticles = 65536;
     window.articleSize = 100000;
@@ -242,6 +269,7 @@ async function run() {
     let makeQueryBtn = document.querySelector('#make_query');
     let searchBox = document.querySelector(".searchbox");
 
+    startLoading("Loading article titles");
     let title_index_p = getData("data/enwiki-20220320-index.json", true);
     let redirect_backlinks_p = getData("data/redirects-old.json", true);
 
@@ -262,6 +290,7 @@ async function run() {
             window.redirects[redirect_srcs[j].toLowerCase()] = redirect_dest;
         }
     }
+    stopLoading("Loading article titles");
 
     searchBox.addEventListener('input', (e) => {
         clearExistingSuggestionsBox();

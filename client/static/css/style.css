@@ -39,6 +39,10 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
   z-index: 1;
 }
 
+.topbar {
+  display: flex;
+}
+
 .searchbox {
   width: 250px;
   font-size: 20px;
@@ -66,26 +70,30 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
   display: flex;
   flex-wrap: wrap;
   padding: 16px;
+  align-items: flex-start;
 }
 
 .articles {
   width: 800px;
+  max-width: 1200px;
   margin-left: 20px;
   flex-grow: 1;
+  margin-right: 16px;
 }
 
-.articles:empty {
+/* .articles:empty {
   display: none;
-}
+} */
 
 .sidebar {
-  max-width: 600px;
-  padding: 8px;
+  max-width: 500px;
+  padding: 16px;
   font-family: Arial;
   background-color: #EEE;
   position: relative;
   min-height: 48px;
   flex-grow: 1;
+  line-height: 1.25em;
 }
 
 .sidebar.collapsed {
@@ -238,6 +246,17 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 .sidebar {
   color: #444;
 }
+
+
+.sidebar p {
+  margin-top: 0;
+  margin-bottom: 14px;
+}
+
+.sidebar p:last-of-type {
+  margin-bottom: 0;
+}
+
 
 .sidebar figure {
   margin: 0;
@@ -420,7 +439,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 
 .hidden {
-  display: none;
+  visibility: hidden !important;
 }
 
 .loadingbar {
@@ -469,5 +488,43 @@ b, strong {
 }
 
 i, em {
+  font-style: italic;
+}
+
+.title {
+  margin-right: 32px; 
+}
+
+.title h1 {
+  font-family: sans-serif;
+  font-size: 24px;
+  font-weight: bold;
+  margin: 4px;
+}
+
+.searchbutton {
+  display: flex;
+}
+
+#make_query {
+  appearance: none;
+  border: none;
+  height: 30px;
+  background-color: #ddd;
+  cursor: pointer;
+}
+
+.loading {
+  margin-left: 32px;
+  display: flex;
+  align-items: center;
+}
+
+.loading .message {
+  margin-left: 8px;
+  font-family: sans-serif;
+}
+
+.loading .inprogress {
   font-style: italic;
 }
