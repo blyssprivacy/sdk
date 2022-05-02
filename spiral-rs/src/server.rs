@@ -830,8 +830,8 @@ mod test {
         let v_w_right = public_params.v_expansion_right.unwrap();
         coefficient_expansion(
             &mut v,
-            client.g,
-            client.stop_round,
+            params.g(),
+            params.stop_round(),
             &params,
             &v_w_left,
             &v_w_right,
@@ -981,7 +981,7 @@ mod test {
                 let sigma_ntt = to_ntt_alloc(&sigma);
                 let ct = client.encrypt_matrix_reg(&sigma_ntt);
                 ct_gsw.copy_into(&ct, 0, 2 * j + 1);
-                let prod = &to_ntt_alloc(&client.sk_reg) * &sigma_ntt;
+                let prod = &to_ntt_alloc(client.get_sk_reg()) * &sigma_ntt;
                 let ct = &client.encrypt_matrix_reg(&prod);
                 ct_gsw.copy_into(&ct, 0, 2 * j);
             }
@@ -1011,7 +1011,7 @@ mod test {
     fn full_protocol_is_correct_for_params(params: &Params) {
         let mut seeded_rng = get_seeded_rng();
 
-        let target_idx = 22456; //22456;//seeded_rng.gen::<usize>() % (params.db_dim_1 + params.db_dim_2);
+        let target_idx = seeded_rng.gen::<usize>() % (params.db_dim_1 + params.db_dim_2);
 
         let mut client = Client::init(params, &mut seeded_rng);
 
@@ -1037,7 +1037,7 @@ mod test {
     fn full_protocol_is_correct_for_params_real_db(params: &Params) {
         let mut seeded_rng = get_seeded_rng();
 
-        let target_idx = 22456; //seeded_rng.gen::<usize>() % (params.db_dim_1 + params.db_dim_2);
+        let target_idx = seeded_rng.gen::<usize>() % (params.db_dim_1 + params.db_dim_2);
 
         let mut client = Client::init(params, &mut seeded_rng);
 

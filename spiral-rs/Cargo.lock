@@ -1745,6 +1745,7 @@ dependencies = [
  "getrandom",
  "pprof",
  "rand",
+ "rand_chacha",
  "rayon",
  "reqwest",
  "serde",

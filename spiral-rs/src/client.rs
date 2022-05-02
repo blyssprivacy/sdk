@@ -1,8 +1,9 @@
 use crate::{
     arith::*, discrete_gaussian::*, gadget::*, number_theory::*, params::*, poly::*, util::*,
 };
-use rand::Rng;
+use rand::{Rng, SeedableRng};
 use std::{iter::once, mem::size_of};
+use rand_chacha::ChaCha20Rng;
 
 fn new_vec_raw<'a>(
     params: &'a Params,
@@ -202,15 +203,15 @@ impl<'a> Query<'a> {
     }
 }
 
-pub struct Client<'a, TRng: Rng> {
+pub struct Client<'a, T: Rng> {
     params: &'a Params,
     sk_gsw: PolyMatrixRaw<'a>,
-    pub sk_reg: PolyMatrixRaw<'a>,
+    sk_reg: PolyMatrixRaw<'a>,
     sk_gsw_full: PolyMatrixRaw<'a>,
     sk_reg_full: PolyMatrixRaw<'a>,
-    dg: DiscreteGaussian<'a, TRng>,
-    pub g: usize,
-    pub stop_round: usize,
+    dg: DiscreteGaussian<'a, T>,
+    public_rng: ChaCha20Rng,
+    public_seed: <ChaCha20Rng as SeedableRng>::Seed,
 }
 
 fn matrix_with_identity<'a>(p: &PolyMatrixRaw<'a>) -> PolyMatrixRaw<'a> {
@@ -241,21 +242,18 @@ fn params_with_moduli(params: &Params, moduli: &Vec<u64>) -> Params {
     )
 }
 
-impl<'a, TRng: Rng> Client<'a, TRng> {
-    pub fn init(params: &'a Params, rng: &'a mut TRng) -> Self {
+impl<'a, T: Rng> Client<'a, T> {
+    pub fn init(params: &'a Params, rng: &'a mut T) -> Self {
         let sk_gsw_dims = params.get_sk_gsw();
         let sk_reg_dims = params.get_sk_reg();
         let sk_gsw = PolyMatrixRaw::zero(params, sk_gsw_dims.0, sk_gsw_dims.1);
         let sk_reg = PolyMatrixRaw::zero(params, sk_reg_dims.0, sk_reg_dims.1);
         let sk_gsw_full = matrix_with_identity(&sk_gsw);
         let sk_reg_full = matrix_with_identity(&sk_reg);
+        let mut public_seed = [0u8; 32];
+        rng.fill_bytes(&mut public_seed);
+        let public_rng = ChaCha20Rng::from_seed(public_seed);
         let dg = DiscreteGaussian::init(params, rng);
-
-        let further_dims = params.db_dim_2;
-        let num_expanded = 1usize << params.db_dim_1;
-        let num_bits_to_gen = params.t_gsw * further_dims + num_expanded;
-        let g = log2_ceil_usize(num_bits_to_gen);
-        let stop_round = log2_ceil_usize(params.t_gsw * further_dims);
         Self {
             params,
             sk_gsw,
@@ -263,13 +261,26 @@ impl<'a, TRng: Rng> Client<'a, TRng> {
             sk_gsw_full,
             sk_reg_full,
             dg,
-            g,
-            stop_round,
+            public_rng,
+            public_seed
         }
     }
+    
+    #[allow(dead_code)]
+    pub(crate) fn get_sk_reg(&self) -> &PolyMatrixRaw<'a> {
+        &self.sk_reg
+    }
 
-    pub fn get_rng(&mut self) -> &mut TRng {
+    pub fn get_rng(&mut self) -> &mut T {
         &mut self.dg.rng
+    }
+
+    pub fn get_public_rng(&mut self) -> &mut ChaCha20Rng {
+        &mut self.public_rng
+    }
+
+    pub fn get_public_seed(&mut self) -> <ChaCha20Rng as SeedableRng>::Seed {
+        self.public_seed
     }
 
     fn get_fresh_gsw_public_key(&mut self, m: usize) -> PolyMatrixRaw<'a> {
@@ -287,7 +298,7 @@ impl<'a, TRng: Rng> Client<'a, TRng> {
 
     fn get_regev_sample(&mut self) -> PolyMatrixNTT<'a> {
         let params = self.params;
-        let a = PolyMatrixRaw::random_rng(params, 1, 1, self.get_rng());
+        let a = PolyMatrixRaw::random_rng(params, 1, 1, self.get_public_rng());
         let e = PolyMatrixRaw::noise(params, 1, 1, &mut self.dg);
         let b_p = &self.sk_reg.ntt() * &a.ntt();
         let b = &e.ntt() + &b_p;
@@ -372,9 +383,9 @@ impl<'a, TRng: Rng> Client<'a, TRng> {
 
         if params.expand_queries {
             // Params for expansion
-            pp.v_expansion_left = Some(self.generate_expansion_params(self.g, params.t_exp_left));
+            pp.v_expansion_left = Some(self.generate_expansion_params(params.g(), params.t_exp_left));
             pp.v_expansion_right =
-                Some(self.generate_expansion_params(self.stop_round + 1, params.t_exp_right));
+                Some(self.generate_expansion_params(params.stop_round() + 1, params.t_exp_right));
 
             // Params for converison
             let g_conv = build_gadget(params, 2, 2 * params.t_conv);
@@ -423,8 +434,8 @@ impl<'a, TRng: Rng> Client<'a, TRng> {
                     sigma.data[2 * idx + 1] = val;
                 }
             }
-            let inv_2_g_first = invert_uint_mod(1 << self.g, params.modulus).unwrap();
-            let inv_2_g_rest = invert_uint_mod(1 << (self.stop_round + 1), params.modulus).unwrap();
+            let inv_2_g_first = invert_uint_mod(1 << params.g(), params.modulus).unwrap();
+            let inv_2_g_rest = invert_uint_mod(1 << (params.stop_round() + 1), params.modulus).unwrap();
 
             for i in 0..params.poly_len / 2 {
                 sigma.data[2 * i] =
@@ -578,10 +589,6 @@ mod test {
         let mut rng = thread_rng();
         let client = Client::init(&params, &mut rng);
 
-        assert_eq!(client.stop_round, 5);
-        assert_eq!(client.stop_round, params.stop_round());
-        assert_eq!(client.g, 10);
-        assert_eq!(client.g, params.g());
         assert_eq!(*client.params, params);
     }
 
@@ -624,7 +631,6 @@ mod test {
         let mut seeded_rng = get_static_seeded_rng();
         let mut client = Client::init(&params, &mut seeded_rng);
         let pub_params = client.generate_keys();
-        assert_eq!(client.stop_round, params.stop_round());
 
         let serialized1 = pub_params.serialize();
         let deserialized1 = PublicParameters::deserialize(&params, &serialized1);

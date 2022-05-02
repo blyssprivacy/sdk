@@ -1,9 +1,8 @@
-mod utils;
 use std::convert::TryInto;
 
 use rand::{thread_rng, SeedableRng, RngCore};
 use rand_chacha::ChaCha20Rng;
-use spiral_rs::{client::*, discrete_gaussian::*, params::*, util::*};
+use spiral_rs::{client::*, discrete_gaussian::*, util::*};
 use wasm_bindgen::prelude::*;
 
 const UUID_V4_LEN: usize = 36;
@@ -14,6 +13,7 @@ extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
 }
+#[allow(unused_macros)]
 macro_rules! console_log {
     ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
 }

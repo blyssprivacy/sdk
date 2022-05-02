@@ -92,8 +92,8 @@ fn criterion_benchmark(c: &mut Criterion) {
         b.iter(|| {
             coefficient_expansion(
                 black_box(&mut v),
-                black_box(client.g),
-                black_box(client.stop_round),
+                black_box(params.g()),
+                black_box(params.stop_round()),
                 black_box(&params),
                 black_box(&v_w_left),
                 black_box(&v_w_right),
