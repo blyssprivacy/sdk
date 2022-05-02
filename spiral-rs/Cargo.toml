@@ -4,7 +4,13 @@ version = "0.1.0"
 edition = "2021"
 
 [features]
-server = ["actix-web", "actix-cors", "actix-files", "actix-server", "actix-http", "actix-service", "openssl", "futures", "uuid"]
+default = []
+client = ["reqwest"]
+server = ["actix-web", "actix-cors", "actix-server", "actix-http", "actix-service", "serde", "futures", "uuid"]
+
+[[bin]]
+name = "client"
+required-features = ["client"]
 
 [[bin]]
 name = "server"
@@ -13,16 +19,17 @@ required-features = ["server"]
 [dependencies]
 getrandom = { features = ["js"], version = "0.2.6" }
 rand = { version = "0.8.5", features = ["small_rng"] }
-reqwest = { version = "0.11", features = ["blocking"] }
 serde_json = "1.0"
 rayon = "1.5.2"
-actix-web = { version = "4.0.1", features = ["openssl"], optional = true }
+
+reqwest = { version = "0.11", features = ["blocking"], optional = true }
+
+serde = { version = "1.0", features = ["derive"], optional = true }
+actix-web = { version = "4.0.1", optional = true }
 actix-cors = { version = "0.6.1", optional = true }
-actix-files = { version = "0.6.0", optional = true }
 actix-server = { version = "2.1.1", optional = true }
 actix-http = { version = "3.0.4", optional = true }
 actix-service = { version = "2.0.2", optional = true }
-openssl = { version = "0.10", features = ["v110"], optional = true }
 futures = { version = "0.3", optional = true }
 uuid = { version = "1.0.0", features = ["v4"], optional = true }
 

@@ -1,34 +1,32 @@
 mod utils;
-use rand::{rngs::ThreadRng, thread_rng};
+use std::convert::TryInto;
+
+use rand::{thread_rng, SeedableRng, RngCore};
+use rand_chacha::ChaCha20Rng;
 use spiral_rs::{client::*, discrete_gaussian::*, params::*, util::*};
 use wasm_bindgen::prelude::*;
 
 const UUID_V4_LEN: usize = 36;
 
 // console_log! macro
-// #[wasm_bindgen]
-// extern "C" {
-//     #[wasm_bindgen(js_namespace = console)]
-//     fn log(s: &str);
-// }
-// macro_rules! console_log {
-//     ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
-// }
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
+macro_rules! console_log {
+    ($($t:tt)*) => (log(&format_args!($($t)*).to_string()))
+}
 
 // Container class for a static lifetime Client
 // Avoids a lifetime in the return signature of bound Rust functions
 #[wasm_bindgen]
 pub struct WrappedClient {
-    client: Client<'static, ThreadRng>,
+    client: &'static mut Client<'static, ChaCha20Rng>,
 }
 
-// Unsafe global with a static lifetime
-// Accessed unsafely only once, at load / setup
-static mut PARAMS: Params = get_empty_params();
-static mut RNG: Option<ThreadRng> = None;
-
 // Very simply test to ensure random generation is not obviously biased.
-fn dg_seems_okay() {
+fn _dg_seems_okay() {
     let params = get_test_params();
     let mut rng = thread_rng();
     let mut dg = DiscreteGaussian::init(&params, &mut rng);
@@ -48,8 +46,7 @@ fn dg_seems_okay() {
 
 // Initializes a client; can optionally take in a set of parameters
 #[wasm_bindgen]
-pub fn initialize(json_params: Option<String>) -> WrappedClient {
-    dg_seems_okay();
+pub fn initialize(json_params: Option<String>, seed: Box<[u8]>) -> WrappedClient {
     // spiral_rs::ntt::test::ntt_correct();
     let cfg = r#"
         {'n': 2,
@@ -69,21 +66,27 @@ pub fn initialize(json_params: Option<String>) -> WrappedClient {
     if json_params.is_some() {
         cfg = json_params.unwrap();
     }
-    let client;
 
-    // this minimal unsafe operation is need to initialize state
-    unsafe {
-        PARAMS = params_from_json(&cfg);
-        RNG = Some(thread_rng());
-        client = Client::init(&PARAMS, RNG.as_mut().unwrap());
-    }
+    let seed_buf = (*seed).try_into().unwrap();
+
+    let params = Box::leak(Box::new(params_from_json(&cfg)));
+    let rng = Box::leak(Box::new(ChaCha20Rng::from_seed(seed_buf)));
+
+    let client = Box::leak(Box::new(Client::init(params, rng)));
 
     WrappedClient { client }
 }
 
 #[wasm_bindgen]
 pub fn generate_public_parameters(c: &mut WrappedClient) -> Box<[u8]> {
-    c.client.generate_keys().serialize().into_boxed_slice()
+    let res = c.client.generate_keys().serialize().into_boxed_slice();
+
+    // important to re-seed here; only query and public key are deterministic
+    let mut rng = thread_rng();
+    let mut new_seed = [0u8; 32];
+    rng.fill_bytes(&mut new_seed);
+    *c.client.get_rng() = ChaCha20Rng::from_seed(new_seed);
+    res
 }
 
 #[wasm_bindgen]
@@ -99,4 +102,20 @@ pub fn generate_query(c: &mut WrappedClient, id: &str, idx_target: usize) -> Box
 #[wasm_bindgen]
 pub fn decode_response(c: &mut WrappedClient, data: Box<[u8]>) -> Box<[u8]> {
     c.client.decode_response(&*data).into_boxed_slice()
+}
+
+#[cfg(test)]
+mod test {
+    use rand::{distributions::Standard, prelude::Distribution};
+
+    use super::*;
+
+    #[test]
+    fn chacha_is_correct() {
+        let mut rng1 = ChaCha20Rng::from_seed([1u8; 32]);
+        let mut rng2 = ChaCha20Rng::from_seed([1u8; 32]);
+        let val1: u64 = Standard.sample(&mut rng1);
+        let val2: u64 = Standard.sample(&mut rng2);
+        assert_eq!(val1, val2);
+    }
 }

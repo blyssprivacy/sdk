@@ -19,6 +19,7 @@
               <input type="text" class="searchbox" placeholder="Article title" />
               <input id="make_query" type="button" value="&gt;" />
               <div class="loading">
+                <div class="progress off"><div></div></div>
                 <div class="loading-icon hidden la-ball-clip-rotate la-dark la-sm"><div></div></div>
                 <div class="message inprogress"></div>
               </div>
@@ -32,25 +33,34 @@
       <div id="output" class="articles"></div>
 
       <div class="sidebar">
-        <p>
-          This is a page is a demo of the work featured in our paper, <a href="https://eprint.iacr.org/2022/368.pdf">"Spiral: Fast, High-Rate Single-Server PIR via FHE Composition"</a>. 
-          The code for our system is available <a href="https://github.com/menonsamir/spiral-rs">here</a>.
-        </p>
+        <div class="sidebar-header">
+          <div class="sidebar-title">FAQ</div>
+          <div class="sidebar-collapse-btn"></div>
+        </div>
+        <div class="sidebar-content">
+          <h2>What is this?</h2>
+          <p>
+            This is a page is a demo of the work featured in our paper, <a href="https://eprint.iacr.org/2022/368.pdf">"Spiral: Fast, High-Rate Single-Server PIR via FHE Composition"</a>. 
+            The code for our system is available <a href="https://github.com/menonsamir/spiral-rs">here</a>.
+          </p>
+          <p>
+            This demo allows private access to 6 GB (~30%) of English Wikipedia.
+            In theory, even if the server is malicious, it will be unable to learn which articles you request.
+            All article title searches are performed locally, and no images are available.
+          </p>
 
-        <p>
-          This demo allows private access to 6 GB (~30%) of English Wikipedia.
-          In theory, even if the server is malicious, it will be unable to learn which articles you request.
-          All article title searches are performed locally, and no images are available.
-        </p>
+          <h2>What costs are associated with running the demo?</h2>
+          <p>
+            When making your first query, this demo will upload 18 MB of data; each later query requires only 14 KB of upload. 
+            The server response to each query is 250 KB.
+          </p>
 
-        <p>
-          When making your first query, this demo will upload 18 MB of data; each later query requires only 14 KB of upload. The server response to each query is 250 KB.
-        </p>
-
-        <p>
-          This is research-quality software built for demonstration purposes; it is not intended to be 
-          side-channel resistant and has not undergone any kind fo security review. Don't use this code in production.
-        </p>
+          <h2>Should I use this in production?</h2>
+          <p>
+            No! This is research-quality software built for demonstration purposes; it is not intended to be 
+            side-channel resistant and has not undergone any kind fo security review. Don't use this code in production.
+          </p>
+          </div>
       </div>
     </div>
 

@@ -10,30 +10,64 @@ import './wtf_wikipedia.js';
 import './wtf-plugin-html.js';
 wtf.extend(wtfHtml);
 
-const API_URL = "";
+const API_URL = "/api";
+const CHECK_URL = "/check";
 const SETUP_URL = "/setup";
 const QUERY_URL = "/query";
 
 async function postData(url = '', data = {}, json = false) {
-    const response = await fetch(url, {
-      method: 'POST',
-      mode: 'cors',
-      cache: 'no-store',
-      credentials: 'omit',
-      headers: { 
-          'Content-Type': 'application/octet-stream',
-          'Content-Length': data.length
-      },
-      redirect: 'follow',
-      referrerPolicy: 'no-referrer',
-      body: data
+    // const response = await fetch(url, {
+    //   method: 'POST',
+    //   mode: 'cors',
+    //   cache: 'no-store',
+    //   credentials: 'omit',
+    //   headers: { 
+    //       'Content-Type': 'application/octet-stream',
+    //       'Content-Length': data.length
+    //   },
+    //   redirect: 'follow',
+    //   referrerPolicy: 'no-referrer',
+    //   body: data
+    // });
+    // if (json) {
+    //     return response.json();
+    // } else {
+    //     let data = await response.arrayBuffer();
+    //     return new Uint8Array(data);
+    // }
+
+    // Can't use Fetch API here since it lacks progress indication
+    const xhr = new XMLHttpRequest();
+    xhr.responseType = json ? 'json' : 'arraybuffer';
+    return await new Promise((resolve, reject) => {
+        xhr.upload.addEventListener("progress", (event) => {
+            if (event.lengthComputable) {
+                setProgress(Math.round(event.loaded / event.total * 100))
+            }
+        });
+        xhr.addEventListener("loadend", () => {
+            resolve(xhr.readyState === 4 && xhr.status === 200);
+        });
+        xhr.onload = function () {
+            if (xhr.status >= 200 && xhr.status < 300) {
+                resolve(xhr.response);
+            } else {
+                reject({
+                    status: xhr.status,
+                    statusText: xhr.statusText
+                });
+            }
+        };
+        xhr.onerror = function () {
+            reject({
+                status: xhr.status,
+                statusText: xhr.statusText
+            });
+        };
+        xhr.open("POST", url, true);
+        xhr.setRequestHeader("Content-Type", "application/octet-stream");
+        xhr.send(new Blob([data.buffer]));
     });
-    if (json) {
-        return response.json();
-    } else {
-        let data = await response.arrayBuffer();
-        return new Uint8Array(data);
-    }
 }
 
 async function getData(url = '', json = false) {
@@ -53,6 +87,7 @@ async function getData(url = '', json = false) {
 }
 
 const api = {
+    check: async (uuid) => getData(API_URL + CHECK_URL + "?uuid="+uuid, true),
     setup: async (data) => postData(API_URL + SETUP_URL, data, true),
     query: async (data) => postData(API_URL + QUERY_URL, data, false)
 }
@@ -162,10 +197,17 @@ function followRedirects(title) {
     }
 }
 
-function startLoading(message) {
+function startLoading(message, hasProgress) {
     window.loading = true;
     window.started_loading = Date.now();
-    document.querySelector(".loading-icon").classList.remove("hidden");
+    if (hasProgress) {
+        document.querySelector(".progress").classList.remove("off");
+        document.querySelector(".loading-icon").classList.add("off");
+    } else {
+        document.querySelector(".progress").classList.add("off");
+        document.querySelector(".loading-icon").classList.remove("off");
+        document.querySelector(".loading-icon").classList.remove("hidden");
+    }
     document.querySelector(".loading .message").innerHTML = message+"...";
     document.querySelector(".loading .message").classList.add("inprogress");
 }
@@ -207,22 +249,94 @@ function enableLinks(element) {
     })
 }
 
-async function query(targetIdx, title) {    
+const DB_NAME = 'spiralKey';
+const KEY_SIZE = 32;
+const MAX_VALID_TIME = 604800000; // 1 week
+
+async function arrayBufferToBase64(data) {
+    const base64url = await new Promise((r) => {
+        const reader = new FileReader()
+        reader.onload = () => r(reader.result)
+        reader.readAsDataURL(new Blob([data]))
+    })
+    return base64url.split(",", 2)[1]
+}
+
+function base64ToArrayBuffer(str) {
+    return Uint8Array.from(atob(str), c => c.charCodeAt(0));
+}
+
+async function storeState(key, uuid) {
+    console.log(key);
+    let dataToStore = {
+        "key": await arrayBufferToBase64(key),
+        "uuid": uuid,
+        "createdAt": Date.now()
+    }
+    window.localStorage[DB_NAME] = JSON.stringify(dataToStore);
+}
+
+function retrieveState() {
+    if (!window.localStorage || !window.localStorage[DB_NAME]) return false;
+    let state = JSON.parse(window.localStorage[DB_NAME]);
+    state["key"] = base64ToArrayBuffer(state["key"]);
+    return state;
+}
+
+function setStateFromKey(key) {
+    console.log("Initializing...");
+    window.key = key;
+    window.client = initialize(undefined, key);
+    console.log("done");
+    console.log("Generating public parameters...");
+    window.publicParameters = generate_public_parameters(window.client);
+    console.log(`done (${publicParameters.length} bytes)`);
+}
+
+async function isStateValid(state) {
+    console.log("Checking if cached state is still valid")
+    if (Date.now() - state.createdAt > MAX_VALID_TIME) return false;
+        
+    let isValidResponse = await api.check(state.uuid);
+    let isValid = isValidResponse.is_valid;
+    if (!isValid) return false;
+
+    return true;
+}
+
+async function setUpClient() {
+    let state = retrieveState();
+    if (state && await isStateValid(state)) {
+        console.log("Loading previous client state")
+        setStateFromKey(state.key);
+        window.id = state.uuid;
+        return true;
+    } else {
+        console.log("No state stored, generating new client state")
+        let key = new Uint8Array(KEY_SIZE);
+        self.crypto.getRandomValues(key);
+        setStateFromKey(key);
+        return false;
+    }
+}
+
+async function uploadState() {
+    startLoading("Uploading setup data", true);
+    console.log("Sending public parameters...");
+    let setup_resp = await api.setup(window.publicParameters);
+    console.log("sent.");
+    let id = setup_resp["id"];
+    stopLoading("Uploading setup data");
+    await storeState(window.key, id);
+    return id;
+}
+
+async function query(targetIdx, title) {
     if (!window.hasSetUp) {
-        startLoading("Uploading setup data");
-        console.log("Initializing...");
-        window.client = initialize();
-        console.log("done");
-        console.log("Generating public parameters...");
-        let publicParameters = generate_public_parameters(window.client);
-        console.log(`done (${publicParameters.length} bytes)`);
-        console.log("Sending public parameters...");
-        let setup_resp = await api.setup(new Blob([publicParameters.buffer]));
-        console.log("sent.");
-        console.log(setup_resp);
-        window.id = setup_resp["id"];
+        let id = await uploadState();
+        if (!id) return false;
         window.hasSetUp = true;
-        stopLoading("Uploading setup data");
+        window.id = id;
     }
 
     startLoading("Loading article");
@@ -231,11 +345,10 @@ async function query(targetIdx, title) {
     console.log(`done (${query.length} bytes)`);
 
     console.log("Sending query...");
-    let response = await api.query(query);
+    let response = new Uint8Array(await api.query(query));
     console.log("sent.");
 
     console.log(`done, got (${response.length} bytes)`);
-    console.log(response);
 
     console.log("Decoding result...");
     let result = decode_response(window.client, response)
@@ -268,10 +381,14 @@ async function run() {
 
     let makeQueryBtn = document.querySelector('#make_query');
     let searchBox = document.querySelector(".searchbox");
+    document.querySelector(".sidebar-collapse-btn").onclick = () => {
+        document.querySelector(".sidebar").classList.toggle("collapsed");
+    }
 
     startLoading("Loading article titles");
     let title_index_p = getData("data/enwiki-20220320-index.json", true);
     let redirect_backlinks_p = getData("data/redirects-old.json", true);
+    let setupClientResult = setUpClient();
 
     window.title_index = await title_index_p;
     let keys = Object.keys(window.title_index);
@@ -290,6 +407,8 @@ async function run() {
             window.redirects[redirect_srcs[j].toLowerCase()] = redirect_dest;
         }
     }
+
+    window.hasSetUp = await setupClientResult;
     stopLoading("Loading article titles");
 
     searchBox.addEventListener('input', (e) => {
@@ -314,3 +433,16 @@ async function run() {
     }
 }
 run();
+
+function setProgress(progress) {
+    document.querySelector(".progress").style.background =
+        "conic-gradient(#333 " +
+        progress +
+        "%,#fff " +
+        progress +
+        "%)";
+
+    // document.getElementById("middle-circle").innerHTML =
+    //     progress.toString() + "%";
+}
+window.setProgress = setProgress;

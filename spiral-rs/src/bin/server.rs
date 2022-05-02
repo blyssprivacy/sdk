@@ -5,29 +5,24 @@ use spiral_rs::params::*;
 use spiral_rs::server::*;
 use spiral_rs::util::*;
 use std::collections::HashMap;
+use std::collections::VecDeque;
 use std::env;
 use std::fs::File;
 use std::sync::Mutex;
 
 use actix_cors::Cors;
-use actix_files as fs;
 use actix_http::HttpServiceBuilder;
-use actix_server::{Server, ServerBuilder};
+use actix_server::Server;
 use actix_service::map_config;
-use actix_service::Service;
 use actix_web::error::PayloadError;
-use actix_web::{get, http, middleware, post, web, App, HttpServer};
-use openssl::ssl::{SslAcceptor, SslFiletype, SslMethod};
-
-const CERT_FNAME: &str = "/etc/letsencrypt/live/spiralwiki.com/fullchain.pem";
-const KEY_FNAME: &str = "/etc/letsencrypt/live/spiralwiki.com/privkey.pem";
-
-const NO_CACHE_PATHS: [&str; 2] = ["/setup", "/query"];
+use actix_web::{get, http, middleware, post, web, App};
+use serde::Deserialize;
+const PUB_PARAMS_MAX: usize = 250;
 
 struct ServerState<'a> {
     params: &'a Params,
     db: AlignedMemory64,
-    pub_params_map: Mutex<HashMap<String, PublicParameters<'a>>>,
+    pub_params_map: Mutex<(VecDeque<String>, HashMap<String, PublicParameters<'a>>)>,
 }
 
 async fn get_request_bytes(
@@ -63,20 +58,43 @@ async fn index<'a>(data: web::Data<ServerState<'a>>) -> String {
     format!("Hello {} {}!", data.params.poly_len, data.db.as_slice()[5])
 }
 
+#[derive(Deserialize)]
+pub struct CheckUuid {
+    uuid: String,
+}
+
+#[get("/check")]
+async fn check<'a>(
+    web::Query(query_params): web::Query<CheckUuid>,
+    data: web::Data<ServerState<'a>>,
+) -> Result<String, http::Error> {
+    let pub_params_map = data.pub_params_map.lock().map_err(other_io_err)?;
+    let has_uuid = pub_params_map.1.contains_key(&query_params.uuid);
+    Ok(format!(
+        "{{\"uuid\":\"{}\", \"is_valid\":{}}}",
+        query_params.uuid, has_uuid
+    ))
+}
+
 #[post("/setup")]
 async fn setup<'a>(
     body: web::Bytes,
     data: web::Data<ServerState<'a>>,
 ) -> Result<String, http::Error> {
-    println!("/setup");
-
     // Parse the request
     let pub_params = PublicParameters::deserialize(data.params, &body);
 
     // Generate a UUID and store it
     let uuid = uuid::Uuid::new_v4();
     let mut pub_params_map = data.pub_params_map.lock().map_err(other_io_err)?;
-    pub_params_map.insert(uuid.to_string(), pub_params);
+    pub_params_map.0.push_back(uuid.to_string());
+    pub_params_map.1.insert(uuid.to_string(), pub_params);
+
+    // If too many public parameters, remove by LRU
+    if pub_params_map.1.len() > PUB_PARAMS_MAX {
+        let lru_uuid_str = pub_params_map.0.pop_front().ok_or(get_other_io_err())?;
+        pub_params_map.1.remove(&lru_uuid_str);
+    }
 
     Ok(format!("{{\"id\":\"{}\"}}", uuid.to_string()))
 }
@@ -88,8 +106,6 @@ async fn query<'a>(
     body: web::Payload,
     data: web::Data<ServerState<'a>>,
 ) -> Result<Vec<u8>, http::Error> {
-    println!("/query");
-
     // Parse the UUID
     let request_bytes =
         get_request_bytes(body, UUID_V4_STR_BYTES + data.params.query_bytes()).await?;
@@ -101,6 +117,7 @@ async fn query<'a>(
     // Look up UUID and get public parameters
     let pub_params_map = data.pub_params_map.lock().map_err(other_io_err)?;
     let pub_params = pub_params_map
+        .1
         .get(&uuid.to_string())
         .ok_or(get_not_found_err())?;
 
@@ -141,7 +158,7 @@ async fn main() -> std::io::Result<()> {
     let server_state = ServerState {
         params: params,
         db: db,
-        pub_params_map: Mutex::new(HashMap::new()),
+        pub_params_map: Mutex::new((VecDeque::new(), HashMap::new())),
     };
     let state = web::Data::new(server_state);
 
@@ -163,35 +180,16 @@ async fn main() -> std::io::Result<()> {
             .app_data(web::PayloadConfig::new(1 << 25))
             .service(setup)
             .service(query)
-            .service(fs::Files::new("/", "../client/static").index_file("index.html"))
-            .wrap_fn(|req, srv | {
-                let should_cache = !NO_CACHE_PATHS.contains(&req.path());
-                let fut = srv.call(req);
-                async move {
-                    let mut res = fut.await?;
-                    if should_cache {
-                        res.headers_mut()
-                            .insert(http::header::CACHE_CONTROL, http::header::HeaderValue::from_static("private, max-age=31536000"));
-                    }
-                    Ok(res)
-                }
-            })
+            .service(check)
     };
 
     Server::build()
-        .bind("http/1", "0.0.0.0:443", move || {
-            let mut builder = SslAcceptor::mozilla_intermediate(SslMethod::tls()).unwrap();
-            builder
-                .set_private_key_file(KEY_FNAME, SslFiletype::PEM)
-                .unwrap();
-            builder.set_certificate_chain_file(CERT_FNAME).unwrap();
-            builder.set_alpn_protos(b"\x08http/1.1").unwrap();
-
+        .bind("http/1", "localhost:8088", move || {
             HttpServiceBuilder::default()
                 .h1(map_config(app_builder(), |_| {
                     actix_web::dev::AppConfig::default()
                 }))
-                .openssl(builder.build())
+                .tcp()
         })?
         .run()
         .await
