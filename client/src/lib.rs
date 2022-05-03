@@ -1,6 +1,6 @@
 use std::convert::TryInto;
 
-use rand::{thread_rng, SeedableRng, RngCore};
+use rand::{thread_rng, RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use spiral_rs::{client::*, discrete_gaussian::*, util::*};
 use wasm_bindgen::prelude::*;
@@ -81,7 +81,7 @@ pub fn initialize(json_params: Option<String>, seed: Box<[u8]>) -> WrappedClient
 pub fn generate_public_parameters(c: &mut WrappedClient) -> Box<[u8]> {
     let res = c.client.generate_keys().serialize().into_boxed_slice();
 
-    // important to re-seed here; only query and public key are deterministic
+    // important to re-seed here; only public key is deterministic, not queries
     let mut rng = thread_rng();
     let mut new_seed = [0u8; 32];
     rng.fill_bytes(&mut new_seed);

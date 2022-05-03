@@ -2,8 +2,8 @@ use crate::{
     arith::*, discrete_gaussian::*, gadget::*, number_theory::*, params::*, poly::*, util::*,
 };
 use rand::{Rng, SeedableRng};
-use std::{iter::once, mem::size_of};
 use rand_chacha::ChaCha20Rng;
+use std::{iter::once, mem::size_of};
 
 fn new_vec_raw<'a>(
     params: &'a Params,
@@ -262,10 +262,10 @@ impl<'a, T: Rng> Client<'a, T> {
             sk_reg_full,
             dg,
             public_rng,
-            public_seed
+            public_seed,
         }
     }
-    
+
     #[allow(dead_code)]
     pub(crate) fn get_sk_reg(&self) -> &PolyMatrixRaw<'a> {
         &self.sk_reg
@@ -383,7 +383,8 @@ impl<'a, T: Rng> Client<'a, T> {
 
         if params.expand_queries {
             // Params for expansion
-            pp.v_expansion_left = Some(self.generate_expansion_params(params.g(), params.t_exp_left));
+            pp.v_expansion_left =
+                Some(self.generate_expansion_params(params.g(), params.t_exp_left));
             pp.v_expansion_right =
                 Some(self.generate_expansion_params(params.stop_round() + 1, params.t_exp_right));
 
@@ -435,7 +436,8 @@ impl<'a, T: Rng> Client<'a, T> {
                 }
             }
             let inv_2_g_first = invert_uint_mod(1 << params.g(), params.modulus).unwrap();
-            let inv_2_g_rest = invert_uint_mod(1 << (params.stop_round() + 1), params.modulus).unwrap();
+            let inv_2_g_rest =
+                invert_uint_mod(1 << (params.stop_round() + 1), params.modulus).unwrap();
 
             for i in 0..params.poly_len / 2 {
                 sigma.data[2 * i] =
@@ -603,22 +605,21 @@ mod test {
         assert_first8(
             pub_params.v_conversion.unwrap()[0].data.as_slice(),
             [
-                122680182, 165987256, 137892309, 95732358, 221787731, 13233184, 156136764,
-                259944211,
+                48110940, 101047152, 169193903, 71831480, 48301935, 106009656, 97287006, 51905893,
             ],
         );
 
         assert_first8(
             client.sk_gsw.data.as_slice(),
             [
-                66974689739603965,
-                66974689739603965,
-                0,
-                1,
-                0,
-                5,
-                66974689739603967,
                 2,
+                1,
+                5,
+                66974689739603968,
+                2,
+                66974689739603966,
+                66974689739603967,
+                5,
             ],
         );
     }
@@ -641,18 +642,24 @@ mod test {
             get_vec(&pub_params.v_packing),
             get_vec(&deserialized1.v_packing)
         );
-        assert_eq!(
-            get_vec(&pub_params.v_conversion.unwrap()),
-            get_vec(&deserialized1.v_conversion.unwrap())
-        );
-        assert_eq!(
-            get_vec(&pub_params.v_expansion_left.unwrap()),
-            get_vec(&deserialized1.v_expansion_left.unwrap())
-        );
-        assert_eq!(
-            get_vec(&pub_params.v_expansion_right.unwrap()),
-            get_vec(&deserialized1.v_expansion_right.unwrap())
-        );
+        if pub_params.v_conversion.is_some() {
+            assert_eq!(
+                get_vec(&pub_params.v_conversion.unwrap()),
+                get_vec(&deserialized1.v_conversion.unwrap())
+            );
+        }
+        if pub_params.v_expansion_left.is_some() {
+            assert_eq!(
+                get_vec(&pub_params.v_expansion_left.unwrap()),
+                get_vec(&deserialized1.v_expansion_left.unwrap())
+            );
+        }
+        if pub_params.v_expansion_right.is_some() {
+            assert_eq!(
+                get_vec(&pub_params.v_expansion_right.unwrap()),
+                get_vec(&deserialized1.v_expansion_right.unwrap())
+            );
+        }
     }
 
     #[test]
