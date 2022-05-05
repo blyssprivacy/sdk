@@ -1,6 +1,7 @@
 use crate::{arith::*, params::*, poly::*};
 use rand::{prelude::SmallRng, thread_rng, Rng, SeedableRng};
 use serde_json::Value;
+use std::fs;
 
 pub const CFG_20_256: &'static str = r#"
         {'n': 2,
@@ -181,18 +182,27 @@ pub const fn get_empty_params() -> Params {
 
 pub fn params_from_json(cfg: &str) -> Params {
     let v: Value = serde_json::from_str(cfg).unwrap();
+    params_from_json_obj(&v)
+}
+
+pub fn params_from_json_obj(v: &Value) -> Params {
     let n = v["n"].as_u64().unwrap() as usize;
     let db_dim_1 = v["nu_1"].as_u64().unwrap() as usize;
     let db_dim_2 = v["nu_2"].as_u64().unwrap() as usize;
     let instances = v["instances"].as_u64().unwrap_or(1) as usize;
-    let db_item_size = v["db_item_size"].as_u64().unwrap_or(1) as usize;
     let p = v["p"].as_u64().unwrap();
-    let q2_bits = v["q2_bits"].as_u64().unwrap();
+    let q2_bits = u64::max(v["q2_bits"].as_u64().unwrap(), MIN_Q2_BITS);
     let t_gsw = v["t_gsw"].as_u64().unwrap() as usize;
     let t_conv = v["t_conv"].as_u64().unwrap() as usize;
     let t_exp_left = v["t_exp_left"].as_u64().unwrap() as usize;
     let t_exp_right = v["t_exp_right"].as_u64().unwrap() as usize;
     let do_expansion = v.get("direct_upload").is_none();
+
+    let mut db_item_size = v["db_item_size"].as_u64().unwrap_or(0) as usize;
+    if db_item_size == 0 {
+        db_item_size = instances * n * n;
+        db_item_size = db_item_size * 2048 * log2_ceil(p) as usize / 8;
+    }
     Params::init(
         2048,
         &vec![268369921u64, 249561089u64],
@@ -210,6 +220,24 @@ pub fn params_from_json(cfg: &str) -> Params {
         instances,
         db_item_size,
     )
+}
+
+static ALL_PARAMS_STORE_FNAME: &str = "../params_store.json";
+
+pub fn get_params_from_store(target_num_log2: usize, item_size: usize) -> Params {
+    
+    let params_store_str = fs::read_to_string(ALL_PARAMS_STORE_FNAME).unwrap();
+    let v: Value = serde_json::from_str(&params_store_str).unwrap();
+    let nearest_target_num = target_num_log2;
+    let nearest_item_size = 1 << usize::max(log2_ceil_usize(item_size), 8);
+    println!("{} x {}", nearest_target_num, nearest_item_size);
+    let target = v.as_array().unwrap().iter()
+        .map(|x| x.as_object().unwrap() )
+        .filter(|x| x.get("target_num").unwrap().as_u64().unwrap() == (nearest_target_num as u64))
+        .filter(|x| x.get("item_size").unwrap().as_u64().unwrap() == (nearest_item_size as u64))
+        .map(|x| x.get("params").unwrap())
+        .next().unwrap();
+    params_from_json_obj(target)
 }
 
 pub fn read_arbitrary_bits(data: &[u8], bit_offs: usize, num_bits: usize) -> u64 {

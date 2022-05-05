@@ -133,6 +133,10 @@ pub fn barrett_raw_u64(input: u64, const_ratio_1: u64, modulus: u64) -> u64 {
     }
 }
 
+pub fn barrett_u64(params: &Params, val: u64) -> u64 {
+    barrett_raw_u64(val, params.barrett_cr_1_modulus, params.modulus)
+}
+
 pub fn barrett_coeff_u64(params: &Params, val: u64, n: usize) -> u64 {
     barrett_raw_u64(val, params.barrett_cr_1[n], params.moduli[n])
 }

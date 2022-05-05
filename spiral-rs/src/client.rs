@@ -426,24 +426,34 @@ impl<'a, T: Rng> Client<'a, T> {
         if params.expand_queries {
             // pack query into single ciphertext
             let mut sigma = PolyMatrixRaw::zero(params, 1, 1);
-            sigma.data[2 * idx_dim0] = scale_k;
-            for i in 0..further_dims as u64 {
-                let bit: u64 = ((idx_further as u64) & (1 << i)) >> i;
-                for j in 0..params.t_gsw {
-                    let val = (1u64 << (bits_per * j)) * bit;
-                    let idx = (i as usize) * params.t_gsw + (j as usize);
-                    sigma.data[2 * idx + 1] = val;
-                }
-            }
             let inv_2_g_first = invert_uint_mod(1 << params.g(), params.modulus).unwrap();
             let inv_2_g_rest =
                 invert_uint_mod(1 << (params.stop_round() + 1), params.modulus).unwrap();
 
-            for i in 0..params.poly_len / 2 {
-                sigma.data[2 * i] =
-                    multiply_uint_mod(sigma.data[2 * i], inv_2_g_first, params.modulus);
-                sigma.data[2 * i + 1] =
-                    multiply_uint_mod(sigma.data[2 * i + 1], inv_2_g_rest, params.modulus);
+            if params.db_dim_2 == 0 {
+                sigma.data[idx_dim0] = scale_k;
+                for i in 0..params.poly_len {
+                    sigma.data[i] =
+                        multiply_uint_mod(sigma.data[i], inv_2_g_first, params.modulus);
+                }
+            } else {
+                sigma.data[2 * idx_dim0] = scale_k;
+            
+                for i in 0..further_dims as u64 {
+                    let bit: u64 = ((idx_further as u64) & (1 << i)) >> i;
+                    for j in 0..params.t_gsw {
+                        let val = (1u64 << (bits_per * j)) * bit;
+                        let idx = (i as usize) * params.t_gsw + (j as usize);
+                        sigma.data[2 * idx + 1] = val;
+                    }
+                }
+
+                for i in 0..params.poly_len / 2 {
+                    sigma.data[2 * i] =
+                        multiply_uint_mod(sigma.data[2 * i], inv_2_g_first, params.modulus);
+                    sigma.data[2 * i + 1] =
+                        multiply_uint_mod(sigma.data[2 * i + 1], inv_2_g_rest, params.modulus);
+                }
             }
 
             query.ct = Some(from_ntt_alloc(

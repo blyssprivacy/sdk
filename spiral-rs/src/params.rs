@@ -4,6 +4,7 @@ use crate::{arith::*, ntt::*, number_theory::*, poly::*};
 
 pub const MAX_MODULI: usize = 4;
 
+pub static MIN_Q2_BITS: u64 = 14;
 pub static Q2_VALUES: [u64; 37] = [
     0,
     0,
@@ -114,6 +115,10 @@ impl Params {
         1 << self.db_dim_1
     }
 
+    pub fn num_items(&self) -> usize {
+        (1 << self.db_dim_1) * (1 << self.db_dim_2)
+    }
+
     pub fn g(&self) -> usize {
         let num_bits_to_gen = self.t_gsw * self.db_dim_2 + self.num_expanded();
         log2_ceil_usize(num_bits_to_gen)
@@ -121,6 +126,10 @@ impl Params {
 
     pub fn stop_round(&self) -> usize {
         log2_ceil_usize(self.t_gsw * self.db_dim_2)
+    }
+
+    pub fn factor_on_first_dim(&self) -> usize {
+        if self.db_dim_2 == 0 { 1 } else { 2 }
     }
 
     pub fn setup_bytes(&self) -> usize {
@@ -213,6 +222,8 @@ impl Params {
         instances: usize,
         db_item_size: usize,
     ) -> Self {
+        assert!(q2_bits >= MIN_Q2_BITS);
+
         let poly_len_log2 = log2(poly_len as u64) as usize;
         let crt_count = moduli.len();
         assert!(crt_count <= MAX_MODULI);

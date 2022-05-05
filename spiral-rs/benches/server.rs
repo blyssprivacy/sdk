@@ -113,6 +113,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     for i in 0..db_size_words {
         db[i] = seeded_rng.gen();
     }
+    println!("{} polys in db", trials * num_items);
 
     let v_reg_sz = dim0 * 2 * params.poly_len;
     let mut v_reg_reoriented = AlignedMemory64::new(v_reg_sz);

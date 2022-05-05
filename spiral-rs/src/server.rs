@@ -59,14 +59,14 @@ pub fn coefficient_expansion(
             let mut ginv_ct_right = PolyMatrixRaw::zero(params, params.t_exp_right, 1);
             let mut ginv_ct_right_ntt = PolyMatrixNTT::zero(params, params.t_exp_right, 1);
 
-            let (w, _gadget_dim, gi_ct, gi_ct_ntt) = match i % 2 {
-                0 => (
+            let (w, _gadget_dim, gi_ct, gi_ct_ntt) = match (r != 0) && (i % 2 == 0) {
+                true => (
                     &v_w_left[r],
                     params.t_exp_left,
                     &mut ginv_ct_left,
                     &mut ginv_ct_left_ntt,
                 ),
-                1 | _ => (
+                false => (
                     &v_w_right[r],
                     params.t_exp_right,
                     &mut ginv_ct_right,
@@ -169,7 +169,7 @@ pub fn multiply_reg_by_database(
     let pt_rows = 1;
     let pt_cols = 1;
 
-    assert!(dim0 * ct_rows >= MAX_SUMMED);
+    // assert!(dim0 * ct_rows >= MAX_SUMMED);
 
     let mut sums_out_n0_u64 = AlignedMemory64::new(4);
     let mut sums_out_n2_u64 = AlignedMemory64::new(4);
@@ -180,8 +180,12 @@ pub fn multiply_reg_by_database(
 
         for i in 0..num_per {
             for c in 0..pt_cols {
-                let inner_limit = MAX_SUMMED;
-                let outer_limit = dim0 * ct_rows / inner_limit;
+                let mut inner_limit = MAX_SUMMED;
+                let mut outer_limit = dim0 * ct_rows / inner_limit;
+                if MAX_SUMMED > dim0 * ct_rows {
+                    inner_limit = dim0 * ct_rows;
+                    outer_limit = 1;
+                }
 
                 let mut sums_out_n0_u64_acc = [0u64, 0, 0, 0];
                 let mut sums_out_n2_u64_acc = [0u64, 0, 0, 0];
@@ -351,12 +355,10 @@ pub fn generate_random_db_and_get_item<'a>(
     let db_size_words = instances * trials * num_items * params.poly_len;
     let mut v = AlignedMemory64::new(db_size_words);
 
-    let mut item = PolyMatrixRaw::zero(params, params.n, params.n);
+    let mut item = PolyMatrixRaw::zero(params, params.instances * params.n, params.n);
 
     for instance in 0..instances {
-        println!("Instance {:?}", instance);
         for trial in 0..trials {
-            println!("Trial {:?}", trial);
             for i in 0..num_items {
                 let ii = i % num_per;
                 let j = i / num_per;
@@ -364,8 +366,8 @@ pub fn generate_random_db_and_get_item<'a>(
                 let mut db_item = PolyMatrixRaw::random_rng(params, 1, 1, &mut rng);
                 db_item.reduce_mod(params.pt_modulus);
 
-                if i == item_idx && instance == 0 {
-                    item.copy_into(&db_item, trial / params.n, trial % params.n);
+                if i == item_idx {
+                    item.copy_into(&db_item, instance * params.n + trial / params.n, trial % params.n);
                 }
 
                 for z in 0..params.poly_len {
@@ -389,9 +391,9 @@ pub fn generate_random_db_and_get_item<'a>(
     (item, v)
 }
 
-pub fn load_item_from_file<'a>(
+pub fn load_item_from_seek<'a, T: Seek + Read>(
     params: &'a Params,
-    file: &mut File,
+    seekable: &mut T,
     instance: usize,
     trial: usize,
     item_idx: usize,
@@ -412,12 +414,12 @@ pub fn load_item_from_file<'a>(
 
     let mut out = PolyMatrixRaw::zero(params, 1, 1);
 
-    let seek_result = file.seek(SeekFrom::Start(idx_poly_in_file as u64));
+    let seek_result = seekable.seek(SeekFrom::Start(idx_poly_in_file as u64));
     if seek_result.is_err() {
         return out;
     }
     let mut data = vec![0u8; 2 * bytes_per_chunk];
-    let bytes_read = file
+    let bytes_read = seekable
         .read(&mut data.as_mut_slice()[0..bytes_per_chunk])
         .unwrap();
 
@@ -432,7 +434,7 @@ pub fn load_item_from_file<'a>(
     out
 }
 
-pub fn load_db_from_file(params: &Params, file: &mut File) -> AlignedMemory64 {
+pub fn load_db_from_seek<T: Seek + Read>(params: &Params, seekable: &mut T) -> AlignedMemory64 {
     let instances = params.instances;
     let trials = params.n * params.n;
     let dim0 = 1 << params.db_dim_1;
@@ -442,17 +444,12 @@ pub fn load_db_from_file(params: &Params, file: &mut File) -> AlignedMemory64 {
     let mut v = AlignedMemory64::new(db_size_words);
 
     for instance in 0..instances {
-        println!("Instance {:?}", instance);
         for trial in 0..trials {
-            println!("Trial {:?}", trial);
             for i in 0..num_items {
-                if i % 8192 == 0 {
-                    println!("item {:?}", i);
-                }
                 let ii = i % num_per;
                 let j = i / num_per;
 
-                let mut db_item = load_item_from_file(params, file, instance, trial, i);
+                let mut db_item = load_item_from_seek(params, seekable, instance, trial, i);
                 // db_item.reduce_mod(params.pt_modulus);
 
                 for z in 0..params.poly_len {
@@ -513,6 +510,10 @@ pub fn fold_ciphertexts(
     v_folding: &Vec<PolyMatrixNTT>,
     v_folding_neg: &Vec<PolyMatrixNTT>,
 ) {
+    if v_cts.len() == 1 {
+        return;
+    }
+    
     let further_dims = log2(v_cts.len() as u64) as usize;
     let ell = v_folding[0].cols / 2;
     let mut ginv_c = PolyMatrixRaw::zero(&params, 2 * ell, 1);
@@ -667,24 +668,40 @@ pub fn expand_query<'a>(
     let v_w_right = public_params.v_expansion_right.as_ref().unwrap();
     let v_neg1 = params.get_v_neg1();
 
-    coefficient_expansion(
-        &mut v,
-        g,
-        stop_round,
-        params,
-        &v_w_left,
-        &v_w_right,
-        &v_neg1,
-        params.t_gsw * params.db_dim_2,
-    );
-
     let mut v_reg_inp = Vec::with_capacity(dim0);
-    for i in 0..dim0 {
-        v_reg_inp.push(v[2 * i].clone());
-    }
     let mut v_gsw_inp = Vec::with_capacity(right_expanded);
-    for i in 0..right_expanded {
-        v_gsw_inp.push(v[2 * i + 1].clone());
+    if further_dims > 0 {
+        coefficient_expansion(
+            &mut v,
+            g,
+            stop_round,
+            params,
+            &v_w_left,
+            &v_w_right,
+            &v_neg1,
+            params.t_gsw * params.db_dim_2,
+        );
+
+        for i in 0..dim0 {
+            v_reg_inp.push(v[2 * i].clone());
+        }
+        for i in 0..right_expanded {
+            v_gsw_inp.push(v[2 * i + 1].clone());
+        }
+    } else {
+        coefficient_expansion(
+            &mut v,
+            g,
+            0,
+            params,
+            &v_w_left,
+            &v_w_left,
+            &v_neg1,
+            0,
+        );
+        for i in 0..dim0 {
+            v_reg_inp.push(v[i].clone());
+        }
     }
 
     let v_reg_sz = dim0 * 2 * params.poly_len;
@@ -716,7 +733,9 @@ pub fn process_query(
     let mut v_reg_reoriented;
     let v_folding;
     if params.expand_queries {
+        let now = Instant::now();
         (v_reg_reoriented, v_folding) = expand_query(params, public_params, query);
+        println!("expansion (took {} us).", now.elapsed().as_micros());
     } else {
         v_reg_reoriented = AlignedMemory64::new(query.v_buf.as_ref().unwrap().len());
         v_reg_reoriented

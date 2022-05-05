@@ -15,7 +15,7 @@ fn main() {
 
     let mut inp_file = File::open(inp_db_path).unwrap();
 
-    let db = load_db_from_file(params, &mut inp_file);
+    let db = load_db_from_seek(params, &mut inp_file);
     let db_slice = db.as_slice();
 
     let mut out_file = File::create(out_db_path).unwrap();

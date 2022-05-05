@@ -16,6 +16,9 @@ required-features = ["client"]
 name = "server"
 required-features = ["server"]
 
+[[bin]]
+name = "e2e"
+
 [dependencies]
 getrandom = { features = ["js"], version = "0.2.6" }
 rand = { version = "0.8.5", features = ["small_rng"] }
