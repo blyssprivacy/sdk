@@ -119,6 +119,11 @@ impl Params {
         (1 << self.db_dim_1) * (1 << self.db_dim_2)
     }
 
+    pub fn item_size(&self) -> usize {
+        let logp = log2(self.pt_modulus) as usize;
+        self.instances * self.n * self.n * self.poly_len * logp / 8
+    }
+
     pub fn g(&self) -> usize {
         let num_bits_to_gen = self.t_gsw * self.db_dim_2 + self.num_expanded();
         log2_ceil_usize(num_bits_to_gen)

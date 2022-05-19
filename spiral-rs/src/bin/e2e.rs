@@ -10,8 +10,9 @@ use std::fs;
 use std::time::Instant;
 
 fn print_params_summary(params: &Params) {
-    let total_size = params.num_items() * params.db_item_size;
-    println!("{} x {} database ({} bytes total)", params.num_items(), params.db_item_size, total_size);    
+    let db_elem_size = params.item_size();
+    let total_size = params.num_items() * db_elem_size;
+    println!("Using a {} x {} byte database ({} bytes total)", params.num_items(), db_elem_size, total_size);    
 }
 
 fn main() {

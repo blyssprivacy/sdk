@@ -230,7 +230,7 @@ pub fn get_params_from_store(target_num_log2: usize, item_size: usize) -> Params
     let v: Value = serde_json::from_str(&params_store_str).unwrap();
     let nearest_target_num = target_num_log2;
     let nearest_item_size = 1 << usize::max(log2_ceil_usize(item_size), 8);
-    println!("{} x {}", nearest_target_num, nearest_item_size);
+    println!("Starting with parameters for 2^{} x {} bytes...", nearest_target_num, nearest_item_size);
     let target = v.as_array().unwrap().iter()
         .map(|x| x.as_object().unwrap() )
         .filter(|x| x.get("target_num").unwrap().as_u64().unwrap() == (nearest_target_num as u64))
