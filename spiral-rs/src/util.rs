@@ -1,5 +1,6 @@
 use crate::{arith::*, params::*, poly::*};
 use rand::{prelude::SmallRng, thread_rng, Rng, SeedableRng};
+use rand_chacha::ChaCha20Rng;
 use serde_json::Value;
 use std::fs;
 
@@ -140,6 +141,10 @@ pub fn get_seeded_rng() -> SmallRng {
     SmallRng::seed_from_u64(get_seed())
 }
 
+pub fn get_chacha_rng() -> ChaCha20Rng {
+    ChaCha20Rng::from_seed(thread_rng().gen::<[u8; 32]>())
+}
+
 pub fn get_static_seed() -> u64 {
     0x123456789
 }
@@ -225,18 +230,24 @@ pub fn params_from_json_obj(v: &Value) -> Params {
 static ALL_PARAMS_STORE_FNAME: &str = "../params_store.json";
 
 pub fn get_params_from_store(target_num_log2: usize, item_size: usize) -> Params {
-    
     let params_store_str = fs::read_to_string(ALL_PARAMS_STORE_FNAME).unwrap();
     let v: Value = serde_json::from_str(&params_store_str).unwrap();
     let nearest_target_num = target_num_log2;
     let nearest_item_size = 1 << usize::max(log2_ceil_usize(item_size), 8);
-    println!("Starting with parameters for 2^{} x {} bytes...", nearest_target_num, nearest_item_size);
-    let target = v.as_array().unwrap().iter()
-        .map(|x| x.as_object().unwrap() )
+    println!(
+        "Starting with parameters for 2^{} x {} bytes...",
+        nearest_target_num, nearest_item_size
+    );
+    let target = v
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|x| x.as_object().unwrap())
         .filter(|x| x.get("target_num").unwrap().as_u64().unwrap() == (nearest_target_num as u64))
         .filter(|x| x.get("item_size").unwrap().as_u64().unwrap() == (nearest_item_size as u64))
         .map(|x| x.get("params").unwrap())
-        .next().unwrap();
+        .next()
+        .unwrap();
     params_from_json_obj(target)
 }
 

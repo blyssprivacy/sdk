@@ -134,19 +134,23 @@ impl Params {
     }
 
     pub fn factor_on_first_dim(&self) -> usize {
-        if self.db_dim_2 == 0 { 1 } else { 2 }
+        if self.db_dim_2 == 0 {
+            1
+        } else {
+            2
+        }
     }
 
     pub fn setup_bytes(&self) -> usize {
         let mut sz_polys = 0;
 
-        let packing_sz = (self.n + 1) * self.t_conv;
+        let packing_sz = ((self.n + 1) - 1) * self.t_conv;
         sz_polys += self.n * packing_sz;
 
         if self.expand_queries {
-            let expansion_left_sz = self.g() * 2 * self.t_exp_left;
-            let expansion_right_sz = (self.stop_round() + 1) * 2 * self.t_exp_right;
-            let conversion_sz = 2 * (2 * self.t_conv);
+            let expansion_left_sz = self.g() * self.t_exp_left;
+            let expansion_right_sz = (self.stop_round() + 1) * self.t_exp_right;
+            let conversion_sz = 2 * self.t_conv;
 
             sz_polys += expansion_left_sz + expansion_right_sz + conversion_sz;
         }
@@ -159,10 +163,10 @@ impl Params {
         let sz_polys;
 
         if self.expand_queries {
-            sz_polys = 2;
+            sz_polys = 1;
         } else {
-            let first_dimension_sz = self.num_expanded() * 2;
-            let further_dimension_sz = self.db_dim_2 * 2 * (2 * self.t_gsw);
+            let first_dimension_sz = self.num_expanded();
+            let further_dimension_sz = self.db_dim_2 * (2 * self.t_gsw);
             sz_polys = first_dimension_sz + further_dimension_sz;
         }
 
@@ -171,7 +175,7 @@ impl Params {
     }
 
     pub fn query_v_buf_bytes(&self) -> usize {
-        self.num_expanded() * 2 * self.poly_len * size_of::<u64>()
+        self.num_expanded() * self.poly_len * size_of::<u64>()
     }
 
     pub fn bytes_per_chunk(&self) -> usize {
