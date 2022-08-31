@@ -42,7 +42,7 @@ fn test_full_processing(group: &mut BenchmarkGroup<WallTime>) {
 
         let target_idx = seeded_rng.gen::<usize>() % (params.db_dim_1 + params.db_dim_2);
 
-        let mut client = Client::init(&params, &mut seeded_rng);
+        let mut client = Client::init(&params);
         let public_params = client.generate_keys();
         let query = client.generate_query(target_idx);
 
@@ -71,9 +71,8 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let params = get_expansion_testing_params();
     let v_neg1 = params.get_v_neg1();
-    let mut seeded_rng = get_seeded_rng();
     let mut chacha_rng = get_chacha_rng();
-    let mut client = Client::init(&params, &mut seeded_rng);
+    let mut client = Client::init(&params);
     let public_params = client.generate_keys();
 
     let mut v = Vec::new();

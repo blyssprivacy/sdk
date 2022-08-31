@@ -1,21 +1,35 @@
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
+use rand::thread_rng;
 use rand::Rng;
+use rand::SeedableRng;
+use rand_chacha::ChaCha20Rng;
+use std::cell::*;
 
+use crate::client::*;
 use crate::params::*;
 use crate::poly::*;
 use std::f64::consts::PI;
 
 pub const NUM_WIDTHS: usize = 8;
 
-pub struct DiscreteGaussian<'a, T: Rng> {
+thread_local!(static RNGS: RefCell<Option<ChaCha20Rng>> = RefCell::new(None));
+
+pub struct DiscreteGaussian {
     choices: Vec<i64>,
     dist: WeightedIndex<f64>,
-    pub rng: &'a mut T,
 }
 
-impl<'a, T: Rng> DiscreteGaussian<'a, T> {
-    pub fn init(params: &'a Params, rng: &'a mut T) -> Self {
+impl DiscreteGaussian {
+    pub fn init(params: &Params) -> Self {
+        Self::init_impl(params, None)
+    }
+
+    pub fn init_with_seed(params: &Params, seed: Seed) -> Self {
+        Self::init_impl(params, Some(seed))
+    }
+
+    fn init_impl(params: &Params, seed: Option<Seed>) -> Self {
         let max_val = (params.noise_width * (NUM_WIDTHS as f64)).ceil() as i64;
         let mut choices = Vec::new();
         let mut table = vec![0f64; 0];
@@ -26,15 +40,25 @@ impl<'a, T: Rng> DiscreteGaussian<'a, T> {
         }
         let dist = WeightedIndex::new(&table).unwrap();
 
-        Self { choices, dist, rng }
+        if seed.is_some() {
+            RNGS.with(|f| *f.borrow_mut() = Some(ChaCha20Rng::from_seed(seed.unwrap())));
+        } else {
+            RNGS.with(|f| *f.borrow_mut() = Some(ChaCha20Rng::from_seed(thread_rng().gen())));
+        }
+
+        Self { choices, dist }
     }
 
     // FIXME: not constant-time
-    pub fn sample(&mut self) -> i64 {
-        self.choices[self.dist.sample(&mut self.rng)]
+    pub fn sample(&self) -> i64 {
+        RNGS.with(|f| {
+            let mut rng = f.borrow_mut();
+            let rng_mut = rng.as_mut().unwrap();
+            self.choices[self.dist.sample(rng_mut)]
+        })
     }
 
-    pub fn sample_matrix(&mut self, p: &mut PolyMatrixRaw) {
+    pub fn sample_matrix(&self, p: &mut PolyMatrixRaw) {
         let modulus = p.get_params().modulus;
         for r in 0..p.rows {
             for c in 0..p.cols {
@@ -52,16 +76,13 @@ impl<'a, T: Rng> DiscreteGaussian<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use rand::thread_rng;
-
     use super::*;
     use crate::util::*;
 
     #[test]
     fn dg_seems_okay() {
         let params = get_test_params();
-        let mut rng = thread_rng();
-        let mut dg = DiscreteGaussian::init(&params, &mut rng);
+        let dg = DiscreteGaussian::init_with_seed(&params, get_chacha_seed());
         let mut v = Vec::new();
         let trials = 10000;
         let mut sum = 0;

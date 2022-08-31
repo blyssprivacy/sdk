@@ -1,11 +1,11 @@
 use crate::{
     arith::*, discrete_gaussian::*, gadget::*, number_theory::*, params::*, poly::*, util::*,
 };
-use rand::{thread_rng, Rng, SeedableRng};
+use rand::{thread_rng, Rng, RngCore, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use std::{iter::once, mem::size_of};
 
-type Seed = <ChaCha20Rng as SeedableRng>::Seed;
+pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
 const SEED_LENGTH: usize = 32;
 
 fn new_vec_raw<'a>(
@@ -282,17 +282,6 @@ impl<'a> Query<'a> {
     }
 }
 
-pub struct Client<'a, T: Rng> {
-    params: &'a Params,
-    sk_gsw: PolyMatrixRaw<'a>,
-    sk_reg: PolyMatrixRaw<'a>,
-    sk_gsw_full: PolyMatrixRaw<'a>,
-    sk_reg_full: PolyMatrixRaw<'a>,
-    dg: DiscreteGaussian<'a, T>,
-    pp_seed: Seed,
-    query_seed: Seed,
-}
-
 fn matrix_with_identity<'a>(p: &PolyMatrixRaw<'a>) -> PolyMatrixRaw<'a> {
     assert_eq!(p.cols, 1);
     let mut r = PolyMatrixRaw::zero(p.params, p.rows, p.rows + 1);
@@ -321,19 +310,46 @@ fn params_with_moduli(params: &Params, moduli: &Vec<u64>) -> Params {
     )
 }
 
-impl<'a, T: Rng> Client<'a, T> {
-    pub fn init(params: &'a Params, rng: &'a mut T) -> Self {
+pub struct Client<'a> {
+    params: &'a Params,
+    sk_gsw: PolyMatrixRaw<'a>,
+    sk_reg: PolyMatrixRaw<'a>,
+    sk_gsw_full: PolyMatrixRaw<'a>,
+    sk_reg_full: PolyMatrixRaw<'a>,
+    dg: DiscreteGaussian,
+    pp_seed: Seed,
+    query_seed: Seed,
+}
+
+impl<'a> Client<'a> {
+    pub fn init(params: &'a Params) -> Self {
+        let mut root_seed = [0u8; 32];
+        thread_rng().fill_bytes(&mut root_seed);
+        Self::init_with_seed_impl(params, root_seed, false)
+    }
+
+    pub fn init_with_seed(params: &'a Params, root_seed: Seed) -> Self {
+        Self::init_with_seed_impl(params, root_seed, true)
+    }
+
+    fn init_with_seed_impl(params: &'a Params, root_seed: Seed, deterministic: bool) -> Self {
         let sk_gsw_dims = params.get_sk_gsw();
         let sk_reg_dims = params.get_sk_reg();
         let sk_gsw = PolyMatrixRaw::zero(params, sk_gsw_dims.0, sk_gsw_dims.1);
         let sk_reg = PolyMatrixRaw::zero(params, sk_reg_dims.0, sk_reg_dims.1);
         let sk_gsw_full = matrix_with_identity(&sk_gsw);
         let sk_reg_full = matrix_with_identity(&sk_reg);
+
+        let mut rng = ChaCha20Rng::from_seed(root_seed);
         let mut pp_seed = [0u8; 32];
         let mut query_seed = [0u8; 32];
         rng.fill_bytes(&mut query_seed);
         rng.fill_bytes(&mut pp_seed);
-        let dg = DiscreteGaussian::init(params, rng);
+        let dg = if deterministic {
+            DiscreteGaussian::init_with_seed(params, root_seed)
+        } else {
+            DiscreteGaussian::init(params)
+        };
         Self {
             params,
             sk_gsw,
@@ -351,16 +367,12 @@ impl<'a, T: Rng> Client<'a, T> {
         &self.sk_reg
     }
 
-    pub fn get_rng(&mut self) -> &mut T {
-        &mut self.dg.rng
-    }
-
-    fn get_fresh_gsw_public_key(&mut self, m: usize, rng: &mut ChaCha20Rng) -> PolyMatrixRaw<'a> {
+    fn get_fresh_gsw_public_key(&self, m: usize, rng: &mut ChaCha20Rng) -> PolyMatrixRaw<'a> {
         let params = self.params;
         let n = params.n;
 
         let a = PolyMatrixRaw::random_rng(params, 1, m, rng);
-        let e = PolyMatrixRaw::noise(params, n, m, &mut self.dg);
+        let e = PolyMatrixRaw::noise(params, n, m, &self.dg);
         let a_inv = -&a;
         let b_p = &self.sk_gsw.ntt() * &a.ntt();
         let b = &e.ntt() + &b_p;
@@ -368,10 +380,10 @@ impl<'a, T: Rng> Client<'a, T> {
         p
     }
 
-    fn get_regev_sample(&mut self, rng: &mut ChaCha20Rng) -> PolyMatrixNTT<'a> {
+    fn get_regev_sample(&self, rng: &mut ChaCha20Rng) -> PolyMatrixNTT<'a> {
         let params = self.params;
         let a = PolyMatrixRaw::random_rng(params, 1, 1, rng);
-        let e = PolyMatrixRaw::noise(params, 1, 1, &mut self.dg);
+        let e = PolyMatrixRaw::noise(params, 1, 1, &self.dg);
         let b_p = &self.sk_reg.ntt() * &a.ntt();
         let b = &e.ntt() + &b_p;
         let mut p = PolyMatrixNTT::zero(params, 2, 1);
@@ -380,7 +392,7 @@ impl<'a, T: Rng> Client<'a, T> {
         p
     }
 
-    fn get_fresh_reg_public_key(&mut self, m: usize, rng: &mut ChaCha20Rng) -> PolyMatrixNTT<'a> {
+    fn get_fresh_reg_public_key(&self, m: usize, rng: &mut ChaCha20Rng) -> PolyMatrixNTT<'a> {
         let params = self.params;
 
         let mut p = PolyMatrixNTT::zero(params, 2, m);
@@ -392,7 +404,7 @@ impl<'a, T: Rng> Client<'a, T> {
     }
 
     fn encrypt_matrix_gsw(
-        &mut self,
+        &self,
         ag: &PolyMatrixNTT<'a>,
         rng: &mut ChaCha20Rng,
     ) -> PolyMatrixNTT<'a> {
@@ -403,7 +415,7 @@ impl<'a, T: Rng> Client<'a, T> {
     }
 
     pub fn encrypt_matrix_reg(
-        &mut self,
+        &self,
         a: &PolyMatrixNTT<'a>,
         rng: &mut ChaCha20Rng,
     ) -> PolyMatrixNTT<'a> {
@@ -412,16 +424,16 @@ impl<'a, T: Rng> Client<'a, T> {
         &p + &a.pad_top(1)
     }
 
-    pub fn decrypt_matrix_reg(&mut self, a: &PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
+    pub fn decrypt_matrix_reg(&self, a: &PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
         &self.sk_reg_full.ntt() * a
     }
 
-    pub fn decrypt_matrix_gsw(&mut self, a: &PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
+    pub fn decrypt_matrix_gsw(&self, a: &PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
         &self.sk_gsw_full.ntt() * a
     }
 
     fn generate_expansion_params(
-        &mut self,
+        &self,
         num_exp: usize,
         m_exp: usize,
         rng: &mut ChaCha20Rng,
@@ -500,7 +512,7 @@ impl<'a, T: Rng> Client<'a, T> {
         pp
     }
 
-    pub fn generate_query(&mut self, idx_target: usize) -> Query<'a> {
+    pub fn generate_query(&self, idx_target: usize) -> Query<'a> {
         let params = self.params;
         let further_dims = params.db_dim_2;
         let idx_dim0 = idx_target / (1 << further_dims);
@@ -672,8 +684,6 @@ impl<'a, T: Rng> Client<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use rand::thread_rng;
-
     use super::*;
 
     fn assert_first8(m: &[u64], gold: [u64; 8]) {
@@ -688,8 +698,7 @@ mod test {
     #[test]
     fn init_is_correct() {
         let params = get_params();
-        let mut rng = thread_rng();
-        let client = Client::init(&params, &mut rng);
+        let client = Client::init(&params);
 
         assert_eq!(*client.params, params);
     }
@@ -697,21 +706,29 @@ mod test {
     #[test]
     fn keygen_is_correct() {
         let params = get_params();
-        let mut seeded_rng = get_static_seeded_rng();
-        let mut client = Client::init(&params, &mut seeded_rng);
+        let mut client = Client::init_with_seed(&params, get_chacha_static_seed());
 
         let pub_params = client.generate_keys();
 
         assert_first8(
             pub_params.v_conversion.unwrap()[0].data.as_slice(),
             [
-                77639594, 190195027, 25198243, 245727165, 99660925, 135957601, 187643645, 116322041,
+                160400272, 10738392, 27480222, 201012452, 42036824, 3955189, 201319389, 181880730,
             ],
         );
 
         assert_first8(
             client.sk_gsw.data.as_slice(),
-            [2, 66974689739603966, 66974689739603967, 5, 2, 1, 1, 0],
+            [
+                1,
+                66974689739603968,
+                4,
+                3,
+                66974689739603965,
+                66974689739603967,
+                1,
+                0,
+            ],
         );
     }
 
@@ -720,8 +737,7 @@ mod test {
     }
 
     fn public_parameters_serialization_is_correct_for_params(params: Params) {
-        let mut seeded_rng = get_static_seeded_rng();
-        let mut client = Client::init(&params, &mut seeded_rng);
+        let mut client = Client::init_with_seed(&params, get_chacha_static_seed());
         let pub_params = client.generate_keys();
 
         let serialized1 = pub_params.serialize();
@@ -785,8 +801,7 @@ mod test {
     }
 
     fn query_serialization_is_correct_for_params(params: Params) {
-        let mut seeded_rng = get_static_seeded_rng();
-        let mut client = Client::init(&params, &mut seeded_rng);
+        let mut client = Client::init(&params);
         _ = client.generate_keys();
         let query = client.generate_query(1);
 

@@ -172,12 +172,7 @@ impl<'a> PolyMatrixRaw<'a> {
         }
     }
 
-    pub fn noise<T: Rng>(
-        params: &'a Params,
-        rows: usize,
-        cols: usize,
-        dg: &mut DiscreteGaussian<T>,
-    ) -> Self {
+    pub fn noise(params: &'a Params, rows: usize, cols: usize, dg: &DiscreteGaussian) -> Self {
         let mut out = PolyMatrixRaw::zero(params, rows, cols);
         dg.sample_matrix(&mut out);
         out

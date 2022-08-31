@@ -1,4 +1,4 @@
-use crate::{arith::*, params::*, poly::*};
+use crate::{arith::*, client::Seed, params::*, poly::*};
 use rand::{prelude::SmallRng, thread_rng, Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use serde_json::Value;
@@ -141,12 +141,23 @@ pub fn get_seeded_rng() -> SmallRng {
     SmallRng::seed_from_u64(get_seed())
 }
 
+pub fn get_chacha_seed() -> Seed {
+    thread_rng().gen::<[u8; 32]>()
+}
+
 pub fn get_chacha_rng() -> ChaCha20Rng {
-    ChaCha20Rng::from_seed(thread_rng().gen::<[u8; 32]>())
+    ChaCha20Rng::from_seed(get_chacha_seed())
 }
 
 pub fn get_static_seed() -> u64 {
     0x123456789
+}
+
+pub fn get_chacha_static_seed() -> Seed {
+    [
+        0x0, 0x1, 0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf, 0x0, 0x1,
+        0x2, 0x3, 0x4, 0x5, 0x6, 0x7, 0x8, 0x9, 0xa, 0xb, 0xc, 0xd, 0xe, 0xf,
+    ]
 }
 
 pub fn get_static_seeded_rng() -> SmallRng {
