@@ -71,7 +71,8 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let params = get_expansion_testing_params();
     let v_neg1 = params.get_v_neg1();
-    let mut chacha_rng = get_chacha_rng();
+    let mut rng = get_chacha_rng();
+    let mut rng_pub = get_chacha_rng();
     let mut client = Client::init(&params);
     let public_params = client.generate_keys();
 
@@ -82,7 +83,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     let scale_k = params.modulus / params.pt_modulus;
     let mut sigma = PolyMatrixRaw::zero(&params, 1, 1);
     sigma.data[7] = scale_k;
-    v[0] = client.encrypt_matrix_reg(&sigma.ntt(), &mut chacha_rng);
+    v[0] = client.encrypt_matrix_reg(&sigma.ntt(), &mut rng, &mut rng_pub);
 
     let v_w_left = public_params.v_expansion_left.unwrap();
     let v_w_right = public_params.v_expansion_right.unwrap();

@@ -789,7 +789,8 @@ pub fn process_query(
 mod test {
     use super::*;
     use crate::client::*;
-    use rand::Rng;
+    use rand::{Rng, SeedableRng};
+    use rand_chacha::ChaCha20Rng;
 
     const TEST_PREPROCESSED_DB_PATH: &'static str = "/home/samir/wiki/enwiki-20220320.dbp";
 
@@ -834,8 +835,9 @@ mod test {
     fn coefficient_expansion_is_correct() {
         let params = get_params();
         let v_neg1 = params.get_v_neg1();
-        let mut chacha_rng = get_chacha_rng();
-        let mut client = Client::init_with_seed(&params, get_chacha_static_seed());
+        let mut rng = ChaCha20Rng::from_entropy();
+        let mut rng_pub = ChaCha20Rng::from_entropy();
+        let mut client = Client::init(&params);
         let public_params = client.generate_keys();
 
         let mut v = Vec::new();
@@ -847,8 +849,8 @@ mod test {
         let scale_k = params.modulus / params.pt_modulus;
         let mut sigma = PolyMatrixRaw::zero(&params, 1, 1);
         sigma.data[target] = scale_k;
-        v[0] = client.encrypt_matrix_reg(&sigma.ntt(), &mut chacha_rng);
-        let test_ct = client.encrypt_matrix_reg(&sigma.ntt(), &mut chacha_rng);
+        v[0] = client.encrypt_matrix_reg(&sigma.ntt(), &mut rng, &mut rng_pub);
+        let test_ct = client.encrypt_matrix_reg(&sigma.ntt(), &mut rng, &mut rng_pub);
 
         let v_w_left = public_params.v_expansion_left.unwrap();
         let v_w_right = public_params.v_expansion_right.unwrap();
@@ -878,14 +880,15 @@ mod test {
     fn regev_to_gsw_is_correct() {
         let mut params = get_params();
         params.db_dim_2 = 1;
-        let mut chacha_rng = get_chacha_rng();
-        let mut client = Client::init_with_seed(&params, get_chacha_static_seed());
+        let mut rng = ChaCha20Rng::from_entropy();
+        let mut rng_pub = ChaCha20Rng::from_entropy();
+        let mut client = Client::init(&params);
         let public_params = client.generate_keys();
 
         let mut enc_constant = |val| {
             let mut sigma = PolyMatrixRaw::zero(&params, 1, 1);
             sigma.data[0] = val;
-            client.encrypt_matrix_reg(&sigma.ntt(), &mut chacha_rng)
+            client.encrypt_matrix_reg(&sigma.ntt(), &mut rng, &mut rng_pub)
         };
 
         let v = &public_params.v_conversion.unwrap()[0];
@@ -915,7 +918,8 @@ mod test {
     fn multiply_reg_by_database_is_correct() {
         let params = get_params();
         let mut seeded_rng = get_seeded_rng();
-        let mut chacha_rng = get_chacha_rng();
+        let mut rng = ChaCha20Rng::from_entropy();
+        let mut rng_pub = ChaCha20Rng::from_entropy();
 
         let dim0 = 1 << params.db_dim_1;
         let num_per = 1 << params.db_dim_2;
@@ -925,7 +929,7 @@ mod test {
         let target_idx_dim0 = target_idx / num_per;
         let target_idx_num_per = target_idx % num_per;
 
-        let mut client = Client::init_with_seed(&params, get_chacha_static_seed());
+        let mut client = Client::init(&params);
         _ = client.generate_keys();
 
         let (corr_item, db) = generate_random_db_and_get_item(&params, target_idx);
@@ -934,7 +938,7 @@ mod test {
         for i in 0..dim0 {
             let val = if i == target_idx_dim0 { scale_k } else { 0 };
             let sigma = PolyMatrixRaw::single_value(&params, val).ntt();
-            v_reg.push(client.encrypt_matrix_reg(&sigma, &mut chacha_rng));
+            v_reg.push(client.encrypt_matrix_reg(&sigma, &mut rng, &mut rng_pub));
         }
 
         let v_reg_sz = dim0 * 2 * params.poly_len;
@@ -971,7 +975,8 @@ mod test {
     fn fold_ciphertexts_is_correct() {
         let params = get_params();
         let mut seeded_rng = get_seeded_rng();
-        let mut chacha_rng = get_chacha_rng();
+        let mut rng = ChaCha20Rng::from_entropy();
+        let mut rng_pub = ChaCha20Rng::from_entropy();
 
         let dim0 = 1 << params.db_dim_1;
         let num_per = 1 << params.db_dim_2;
@@ -980,14 +985,14 @@ mod test {
         let target_idx = seeded_rng.gen::<usize>() % (dim0 * num_per);
         let target_idx_num_per = target_idx % num_per;
 
-        let mut client = Client::init_with_seed(&params, get_chacha_static_seed());
+        let mut client = Client::init(&params);
         _ = client.generate_keys();
 
         let mut v_reg = Vec::new();
         for i in 0..num_per {
             let val = if i == target_idx_num_per { scale_k } else { 0 };
             let sigma = PolyMatrixRaw::single_value(&params, val).ntt();
-            v_reg.push(client.encrypt_matrix_reg(&sigma, &mut chacha_rng));
+            v_reg.push(client.encrypt_matrix_reg(&sigma, &mut rng, &mut rng_pub));
         }
 
         let mut v_reg_raw = Vec::new();
@@ -1005,10 +1010,10 @@ mod test {
                 let value = (1u64 << (bits_per * j)) * bit;
                 let sigma = PolyMatrixRaw::single_value(&params, value);
                 let sigma_ntt = to_ntt_alloc(&sigma);
-                let ct = client.encrypt_matrix_reg(&sigma_ntt, &mut chacha_rng);
+                let ct = client.encrypt_matrix_reg(&sigma_ntt, &mut rng, &mut rng_pub);
                 ct_gsw.copy_into(&ct, 0, 2 * j + 1);
                 let prod = &to_ntt_alloc(client.get_sk_reg()) * &sigma_ntt;
-                let ct = &client.encrypt_matrix_reg(&prod, &mut chacha_rng);
+                let ct = &client.encrypt_matrix_reg(&prod, &mut rng, &mut rng_pub);
                 ct_gsw.copy_into(&ct, 0, 2 * j);
             }
 
@@ -1039,7 +1044,7 @@ mod test {
 
         let target_idx = seeded_rng.gen::<usize>() % (params.db_dim_1 + params.db_dim_2);
 
-        let mut client = Client::init_with_seed(&params, get_chacha_static_seed());
+        let mut client = Client::init(&params);
 
         let public_params = client.generate_keys();
         let query = client.generate_query(target_idx);
@@ -1065,7 +1070,7 @@ mod test {
 
         let target_idx = seeded_rng.gen::<usize>() % (params.db_dim_1 + params.db_dim_2);
 
-        let mut client = Client::init_with_seed(&params, get_chacha_static_seed());
+        let mut client = Client::init(&params);
 
         let public_params = client.generate_keys();
         let query = client.generate_query(target_idx);

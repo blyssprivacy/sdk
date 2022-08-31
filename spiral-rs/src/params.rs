@@ -1,6 +1,6 @@
 use std::mem::size_of;
 
-use crate::{arith::*, ntt::*, number_theory::*, poly::*};
+use crate::{arith::*, client::SEED_LENGTH, ntt::*, number_theory::*, poly::*};
 
 pub const MAX_MODULI: usize = 4;
 
@@ -156,7 +156,7 @@ impl Params {
         }
 
         let sz_bytes = sz_polys * self.poly_len * size_of::<u64>();
-        sz_bytes
+        SEED_LENGTH + sz_bytes
     }
 
     pub fn query_bytes(&self) -> usize {
@@ -171,7 +171,7 @@ impl Params {
         }
 
         let sz_bytes = sz_polys * self.poly_len * size_of::<u64>();
-        sz_bytes
+        SEED_LENGTH + sz_bytes
     }
 
     pub fn query_v_buf_bytes(&self) -> usize {

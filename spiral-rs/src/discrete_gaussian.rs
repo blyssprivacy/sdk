@@ -1,19 +1,12 @@
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
-use rand::thread_rng;
-use rand::Rng;
-use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
-use std::cell::*;
 
-use crate::client::*;
 use crate::params::*;
 use crate::poly::*;
 use std::f64::consts::PI;
 
 pub const NUM_WIDTHS: usize = 8;
-
-thread_local!(static RNGS: RefCell<Option<ChaCha20Rng>> = RefCell::new(None));
 
 pub struct DiscreteGaussian {
     choices: Vec<i64>,
@@ -22,14 +15,6 @@ pub struct DiscreteGaussian {
 
 impl DiscreteGaussian {
     pub fn init(params: &Params) -> Self {
-        Self::init_impl(params, None)
-    }
-
-    pub fn init_with_seed(params: &Params, seed: Seed) -> Self {
-        Self::init_impl(params, Some(seed))
-    }
-
-    fn init_impl(params: &Params, seed: Option<Seed>) -> Self {
         let max_val = (params.noise_width * (NUM_WIDTHS as f64)).ceil() as i64;
         let mut choices = Vec::new();
         let mut table = vec![0f64; 0];
@@ -40,31 +25,21 @@ impl DiscreteGaussian {
         }
         let dist = WeightedIndex::new(&table).unwrap();
 
-        if seed.is_some() {
-            RNGS.with(|f| *f.borrow_mut() = Some(ChaCha20Rng::from_seed(seed.unwrap())));
-        } else {
-            RNGS.with(|f| *f.borrow_mut() = Some(ChaCha20Rng::from_seed(thread_rng().gen())));
-        }
-
         Self { choices, dist }
     }
 
     // FIXME: not constant-time
-    pub fn sample(&self) -> i64 {
-        RNGS.with(|f| {
-            let mut rng = f.borrow_mut();
-            let rng_mut = rng.as_mut().unwrap();
-            self.choices[self.dist.sample(rng_mut)]
-        })
+    pub fn sample(&self, rng: &mut ChaCha20Rng) -> i64 {
+        self.choices[self.dist.sample(rng)]
     }
 
-    pub fn sample_matrix(&self, p: &mut PolyMatrixRaw) {
+    pub fn sample_matrix(&self, p: &mut PolyMatrixRaw, rng: &mut ChaCha20Rng) {
         let modulus = p.get_params().modulus;
         for r in 0..p.rows {
             for c in 0..p.cols {
                 let poly = p.get_poly_mut(r, c);
                 for z in 0..poly.len() {
-                    let mut s = self.sample();
+                    let mut s = self.sample(rng);
                     s += modulus as i64;
                     s %= modulus as i64; // FIXME: not constant time
                     poly[z] = s as u64;
@@ -82,12 +57,13 @@ mod test {
     #[test]
     fn dg_seems_okay() {
         let params = get_test_params();
-        let dg = DiscreteGaussian::init_with_seed(&params, get_chacha_seed());
+        let dg = DiscreteGaussian::init(&params);
+        let mut rng = get_chacha_rng();
         let mut v = Vec::new();
         let trials = 10000;
         let mut sum = 0;
         for _ in 0..trials {
-            let val = dg.sample();
+            let val = dg.sample(&mut rng);
             v.push(val);
             sum += val;
         }

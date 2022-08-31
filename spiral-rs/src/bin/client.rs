@@ -1,4 +1,3 @@
-use rand::thread_rng;
 use serde_json::Value;
 use spiral_rs::client::*;
 use spiral_rs::util::*;

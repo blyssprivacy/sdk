@@ -47,7 +47,7 @@ fn main() {
         params.num_items()
     );
     println!("initializing client");
-    let mut client = Client::init_with_seed(&params, get_chacha_seed());
+    let mut client = Client::init(&params);
     println!("generating public parameters");
     let pub_params = client.generate_keys();
     let pub_params_buf = pub_params.serialize();

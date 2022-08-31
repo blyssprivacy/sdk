@@ -1,12 +1,12 @@
 use crate::{
     arith::*, discrete_gaussian::*, gadget::*, number_theory::*, params::*, poly::*, util::*,
 };
-use rand::{thread_rng, Rng, RngCore, SeedableRng};
+use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use std::{iter::once, mem::size_of};
 
 pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
-const SEED_LENGTH: usize = 32;
+pub const SEED_LENGTH: usize = 32;
 
 fn new_vec_raw<'a>(
     params: &'a Params,
@@ -171,7 +171,7 @@ impl<'a> PublicParameters<'a> {
     }
 
     pub fn deserialize(params: &'a Params, data: &[u8]) -> Self {
-        assert_eq!(SEED_LENGTH + params.setup_bytes(), data.len());
+        assert_eq!(params.setup_bytes(), data.len());
 
         let mut idx = 0;
 
@@ -254,7 +254,7 @@ impl<'a> Query<'a> {
     }
 
     pub fn deserialize(params: &'a Params, mut data: &[u8]) -> Self {
-        assert_eq!(SEED_LENGTH + params.query_bytes(), data.len());
+        assert_eq!(params.query_bytes(), data.len());
 
         let mut out = Query::empty();
         let seed = data[0..SEED_LENGTH].try_into().unwrap();
@@ -317,22 +317,10 @@ pub struct Client<'a> {
     sk_gsw_full: PolyMatrixRaw<'a>,
     sk_reg_full: PolyMatrixRaw<'a>,
     dg: DiscreteGaussian,
-    pp_seed: Seed,
-    query_seed: Seed,
 }
 
 impl<'a> Client<'a> {
     pub fn init(params: &'a Params) -> Self {
-        let mut root_seed = [0u8; 32];
-        thread_rng().fill_bytes(&mut root_seed);
-        Self::init_with_seed_impl(params, root_seed, false)
-    }
-
-    pub fn init_with_seed(params: &'a Params, root_seed: Seed) -> Self {
-        Self::init_with_seed_impl(params, root_seed, true)
-    }
-
-    fn init_with_seed_impl(params: &'a Params, root_seed: Seed, deterministic: bool) -> Self {
         let sk_gsw_dims = params.get_sk_gsw();
         let sk_reg_dims = params.get_sk_reg();
         let sk_gsw = PolyMatrixRaw::zero(params, sk_gsw_dims.0, sk_gsw_dims.1);
@@ -340,16 +328,8 @@ impl<'a> Client<'a> {
         let sk_gsw_full = matrix_with_identity(&sk_gsw);
         let sk_reg_full = matrix_with_identity(&sk_reg);
 
-        let mut rng = ChaCha20Rng::from_seed(root_seed);
-        let mut pp_seed = [0u8; 32];
-        let mut query_seed = [0u8; 32];
-        rng.fill_bytes(&mut query_seed);
-        rng.fill_bytes(&mut pp_seed);
-        let dg = if deterministic {
-            DiscreteGaussian::init_with_seed(params, root_seed)
-        } else {
-            DiscreteGaussian::init(params)
-        };
+        let dg = DiscreteGaussian::init(params);
+
         Self {
             params,
             sk_gsw,
@@ -357,8 +337,6 @@ impl<'a> Client<'a> {
             sk_gsw_full,
             sk_reg_full,
             dg,
-            pp_seed,
-            query_seed,
         }
     }
 
@@ -367,12 +345,17 @@ impl<'a> Client<'a> {
         &self.sk_reg
     }
 
-    fn get_fresh_gsw_public_key(&self, m: usize, rng: &mut ChaCha20Rng) -> PolyMatrixRaw<'a> {
+    fn get_fresh_gsw_public_key(
+        &self,
+        m: usize,
+        rng: &mut ChaCha20Rng,
+        rng_pub: &mut ChaCha20Rng,
+    ) -> PolyMatrixRaw<'a> {
         let params = self.params;
         let n = params.n;
 
-        let a = PolyMatrixRaw::random_rng(params, 1, m, rng);
-        let e = PolyMatrixRaw::noise(params, n, m, &self.dg);
+        let a = PolyMatrixRaw::random_rng(params, 1, m, rng_pub);
+        let e = PolyMatrixRaw::noise(params, n, m, &self.dg, rng);
         let a_inv = -&a;
         let b_p = &self.sk_gsw.ntt() * &a.ntt();
         let b = &e.ntt() + &b_p;
@@ -380,10 +363,14 @@ impl<'a> Client<'a> {
         p
     }
 
-    fn get_regev_sample(&self, rng: &mut ChaCha20Rng) -> PolyMatrixNTT<'a> {
+    fn get_regev_sample(
+        &self,
+        rng: &mut ChaCha20Rng,
+        rng_pub: &mut ChaCha20Rng,
+    ) -> PolyMatrixNTT<'a> {
         let params = self.params;
-        let a = PolyMatrixRaw::random_rng(params, 1, 1, rng);
-        let e = PolyMatrixRaw::noise(params, 1, 1, &self.dg);
+        let a = PolyMatrixRaw::random_rng(params, 1, 1, rng_pub);
+        let e = PolyMatrixRaw::noise(params, 1, 1, &self.dg, rng);
         let b_p = &self.sk_reg.ntt() * &a.ntt();
         let b = &e.ntt() + &b_p;
         let mut p = PolyMatrixNTT::zero(params, 2, 1);
@@ -392,13 +379,18 @@ impl<'a> Client<'a> {
         p
     }
 
-    fn get_fresh_reg_public_key(&self, m: usize, rng: &mut ChaCha20Rng) -> PolyMatrixNTT<'a> {
+    fn get_fresh_reg_public_key(
+        &self,
+        m: usize,
+        rng: &mut ChaCha20Rng,
+        rng_pub: &mut ChaCha20Rng,
+    ) -> PolyMatrixNTT<'a> {
         let params = self.params;
 
         let mut p = PolyMatrixNTT::zero(params, 2, m);
 
         for i in 0..m {
-            p.copy_into(&self.get_regev_sample(rng), 0, i);
+            p.copy_into(&self.get_regev_sample(rng, rng_pub), 0, i);
         }
         p
     }
@@ -407,9 +399,10 @@ impl<'a> Client<'a> {
         &self,
         ag: &PolyMatrixNTT<'a>,
         rng: &mut ChaCha20Rng,
+        rng_pub: &mut ChaCha20Rng,
     ) -> PolyMatrixNTT<'a> {
         let mx = ag.cols;
-        let p = self.get_fresh_gsw_public_key(mx, rng);
+        let p = self.get_fresh_gsw_public_key(mx, rng, rng_pub);
         let res = &(p.ntt()) + &(ag.pad_top(1));
         res
     }
@@ -418,9 +411,10 @@ impl<'a> Client<'a> {
         &self,
         a: &PolyMatrixNTT<'a>,
         rng: &mut ChaCha20Rng,
+        rng_pub: &mut ChaCha20Rng,
     ) -> PolyMatrixNTT<'a> {
         let m = a.cols;
-        let p = self.get_fresh_reg_public_key(m, rng);
+        let p = self.get_fresh_reg_public_key(m, rng, rng_pub);
         &p + &a.pad_top(1)
     }
 
@@ -437,6 +431,7 @@ impl<'a> Client<'a> {
         num_exp: usize,
         m_exp: usize,
         rng: &mut ChaCha20Rng,
+        rng_pub: &mut ChaCha20Rng,
     ) -> Vec<PolyMatrixNTT<'a>> {
         let params = self.params;
         let g_exp = build_gadget(params, 1, m_exp);
@@ -447,23 +442,26 @@ impl<'a> Client<'a> {
             let t = (params.poly_len / (1 << i)) + 1;
             let tau_sk_reg = automorph_alloc(&self.sk_reg, t);
             let prod = &tau_sk_reg.ntt() * &g_exp_ntt;
-            let w_exp_i = self.encrypt_matrix_reg(&prod, rng);
+            let w_exp_i = self.encrypt_matrix_reg(&prod, rng, rng_pub);
             res.push(w_exp_i);
         }
         res
     }
 
     pub fn generate_keys(&mut self) -> PublicParameters<'a> {
+        let mut rng = ChaCha20Rng::from_entropy();
         let params = self.params;
-        self.dg.sample_matrix(&mut self.sk_gsw);
-        self.dg.sample_matrix(&mut self.sk_reg);
+
+        self.dg.sample_matrix(&mut self.sk_gsw, &mut rng);
+        self.dg.sample_matrix(&mut self.sk_reg, &mut rng);
         self.sk_gsw_full = matrix_with_identity(&self.sk_gsw);
         self.sk_reg_full = matrix_with_identity(&self.sk_reg);
         let sk_reg_ntt = to_ntt_alloc(&self.sk_reg);
 
         let mut pp = PublicParameters::init(params);
-        pp.seed = Some(self.pp_seed);
-        let mut rng = ChaCha20Rng::from_seed(self.pp_seed);
+        let pp_seed = rng.gen();
+        pp.seed = Some(pp_seed);
+        let mut rng_pub = ChaCha20Rng::from_seed(pp_seed);
 
         // Params for packing
         let gadget_conv = build_gadget(params, 1, params.t_conv);
@@ -472,18 +470,23 @@ impl<'a> Client<'a> {
             let scaled = scalar_multiply_alloc(&sk_reg_ntt, &gadget_conv_ntt);
             let mut ag = PolyMatrixNTT::zero(params, params.n, params.t_conv);
             ag.copy_into(&scaled, i, 0);
-            let w = self.encrypt_matrix_gsw(&ag, &mut rng);
+            let w = self.encrypt_matrix_gsw(&ag, &mut rng, &mut rng_pub);
             pp.v_packing.push(w);
         }
 
         if params.expand_queries {
             // Params for expansion
-            pp.v_expansion_left =
-                Some(self.generate_expansion_params(params.g(), params.t_exp_left, &mut rng));
+            pp.v_expansion_left = Some(self.generate_expansion_params(
+                params.g(),
+                params.t_exp_left,
+                &mut rng,
+                &mut rng_pub,
+            ));
             pp.v_expansion_right = Some(self.generate_expansion_params(
                 params.stop_round() + 1,
                 params.t_exp_right,
                 &mut rng,
+                &mut rng_pub,
             ));
 
             // Params for converison
@@ -504,7 +507,7 @@ impl<'a> Client<'a> {
                     let val = g_conv.get_poly(1, i)[0];
                     sigma = &sk_reg_ntt * &single_poly(params, val).ntt();
                 }
-                let ct = self.encrypt_matrix_reg(&sigma, &mut rng);
+                let ct = self.encrypt_matrix_reg(&sigma, &mut rng, &mut rng_pub);
                 pp.v_conversion.as_mut().unwrap()[0].copy_into(&ct, 0, i);
             }
         }
@@ -520,9 +523,12 @@ impl<'a> Client<'a> {
         let scale_k = params.modulus / params.pt_modulus;
         let bits_per = get_bits_per(params, params.t_gsw);
 
+        let mut rng = ChaCha20Rng::from_entropy();
+
         let mut query = Query::empty();
-        query.seed = Some(self.query_seed);
-        let mut rng = ChaCha20Rng::from_seed(self.query_seed);
+        let query_seed = ChaCha20Rng::from_entropy().gen();
+        query.seed = Some(query_seed);
+        let mut rng_pub = ChaCha20Rng::from_seed(query_seed);
         if params.expand_queries {
             // pack query into single ciphertext
             let mut sigma = PolyMatrixRaw::zero(params, 1, 1);
@@ -555,9 +561,11 @@ impl<'a> Client<'a> {
                 }
             }
 
-            query.ct = Some(from_ntt_alloc(
-                &self.encrypt_matrix_reg(&to_ntt_alloc(&sigma), &mut rng),
-            ));
+            query.ct = Some(from_ntt_alloc(&self.encrypt_matrix_reg(
+                &to_ntt_alloc(&sigma),
+                &mut rng,
+                &mut rng_pub,
+            )));
         } else {
             let num_expanded = 1 << params.db_dim_1;
             let mut sigma_v = Vec::<PolyMatrixNTT>::new();
@@ -569,7 +577,11 @@ impl<'a> Client<'a> {
             for i in 0..num_expanded {
                 let value = ((i == idx_dim0) as u64) * scale_k;
                 let sigma = PolyMatrixRaw::single_value(&params, value);
-                reg_cts.push(self.encrypt_matrix_reg(&to_ntt_alloc(&sigma), &mut rng));
+                reg_cts.push(self.encrypt_matrix_reg(
+                    &to_ntt_alloc(&sigma),
+                    &mut rng,
+                    &mut rng_pub,
+                ));
             }
             // reorient into server's preferred indexing
             reorient_reg_ciphertexts(self.params, reg_cts_buf.as_mut_slice(), &reg_cts);
@@ -586,10 +598,10 @@ impl<'a> Client<'a> {
 
                     // important to rng in the right order here
                     let prod = &to_ntt_alloc(&self.sk_reg) * &sigma_ntt;
-                    let ct = &self.encrypt_matrix_reg(&prod, &mut rng);
+                    let ct = &self.encrypt_matrix_reg(&prod, &mut rng, &mut rng_pub);
                     ct_gsw.copy_into(ct, 0, 2 * j);
 
-                    let ct = &self.encrypt_matrix_reg(&sigma_ntt, &mut rng);
+                    let ct = &self.encrypt_matrix_reg(&sigma_ntt, &mut rng, &mut rng_pub);
                     ct_gsw.copy_into(ct, 0, 2 * j + 1);
                 }
                 sigma_v.push(ct_gsw);
@@ -686,11 +698,6 @@ impl<'a> Client<'a> {
 mod test {
     use super::*;
 
-    fn assert_first8(m: &[u64], gold: [u64; 8]) {
-        let got: [u64; 8] = m[0..8].try_into().unwrap();
-        assert_eq!(got, gold);
-    }
-
     fn get_params() -> Params {
         get_short_keygen_params()
     }
@@ -706,30 +713,16 @@ mod test {
     #[test]
     fn keygen_is_correct() {
         let params = get_params();
-        let mut client = Client::init_with_seed(&params, get_chacha_static_seed());
+        let mut client = Client::init(&params);
 
-        let pub_params = client.generate_keys();
+        _ = client.generate_keys();
 
-        assert_first8(
-            pub_params.v_conversion.unwrap()[0].data.as_slice(),
-            [
-                160400272, 10738392, 27480222, 201012452, 42036824, 3955189, 201319389, 181880730,
-            ],
-        );
+        let threshold = (10.0 * params.noise_width) as u64;
 
-        assert_first8(
-            client.sk_gsw.data.as_slice(),
-            [
-                1,
-                66974689739603968,
-                4,
-                3,
-                66974689739603965,
-                66974689739603967,
-                1,
-                0,
-            ],
-        );
+        for i in 0..client.sk_gsw.data.len() {
+            let val = client.sk_gsw.data[i];
+            assert!((val < threshold) || ((params.modulus - val) < threshold));
+        }
     }
 
     fn get_vec(v: &Vec<PolyMatrixNTT>) -> Vec<u64> {
@@ -737,7 +730,7 @@ mod test {
     }
 
     fn public_parameters_serialization_is_correct_for_params(params: Params) {
-        let mut client = Client::init_with_seed(&params, get_chacha_static_seed());
+        let mut client = Client::init(&params);
         let pub_params = client.generate_keys();
 
         let serialized1 = pub_params.serialize();
