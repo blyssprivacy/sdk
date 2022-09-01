@@ -448,16 +448,36 @@ impl<'a> Client<'a> {
         res
     }
 
-    pub fn generate_keys(&mut self) -> PublicParameters<'a> {
-        let mut rng = ChaCha20Rng::from_entropy();
-        let params = self.params;
+    pub fn generate_keys_from_seed(&mut self, seed: Seed) -> PublicParameters<'a> {
+        self.generate_keys_impl(&mut ChaCha20Rng::from_seed(seed))
+    }
 
-        self.dg.sample_matrix(&mut self.sk_gsw, &mut rng);
-        self.dg.sample_matrix(&mut self.sk_reg, &mut rng);
+    pub fn generate_keys(&mut self) -> PublicParameters<'a> {
+        self.generate_keys_impl(&mut ChaCha20Rng::from_entropy())
+    }
+
+    pub fn generate_secret_keys_from_seed(&mut self, seed: Seed) {
+        self.generate_secret_keys_impl(&mut ChaCha20Rng::from_seed(seed))
+    }
+
+    pub fn generate_secret_keys(&mut self) {
+        self.generate_secret_keys_impl(&mut ChaCha20Rng::from_entropy())
+    }
+
+    fn generate_secret_keys_impl(&mut self, rng: &mut ChaCha20Rng) {
+        self.dg.sample_matrix(&mut self.sk_gsw, rng);
+        self.dg.sample_matrix(&mut self.sk_reg, rng);
         self.sk_gsw_full = matrix_with_identity(&self.sk_gsw);
         self.sk_reg_full = matrix_with_identity(&self.sk_reg);
+    }
+
+    fn generate_keys_impl(&mut self, rng: &mut ChaCha20Rng) -> PublicParameters<'a> {
+        let params = self.params;
+
+        self.generate_secret_keys_impl(rng);
         let sk_reg_ntt = to_ntt_alloc(&self.sk_reg);
 
+        let mut rng = ChaCha20Rng::from_entropy();
         let mut pp = PublicParameters::init(params);
         let pp_seed = rng.gen();
         pp.seed = Some(pp_seed);
