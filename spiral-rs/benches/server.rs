@@ -42,7 +42,7 @@ fn test_full_processing(group: &mut BenchmarkGroup<WallTime>) {
 
         let target_idx = seeded_rng.gen::<usize>() % (params.db_dim_1 + params.db_dim_2);
 
-        let mut client = Client::init(&params, &mut seeded_rng);
+        let mut client = Client::init(&params);
         let public_params = client.generate_keys();
         let query = client.generate_query(target_idx);
 
@@ -71,8 +71,9 @@ fn criterion_benchmark(c: &mut Criterion) {
 
     let params = get_expansion_testing_params();
     let v_neg1 = params.get_v_neg1();
-    let mut seeded_rng = get_seeded_rng();
-    let mut client = Client::init(&params, &mut seeded_rng);
+    let mut rng = get_chacha_rng();
+    let mut rng_pub = get_chacha_rng();
+    let mut client = Client::init(&params);
     let public_params = client.generate_keys();
 
     let mut v = Vec::new();
@@ -82,7 +83,7 @@ fn criterion_benchmark(c: &mut Criterion) {
     let scale_k = params.modulus / params.pt_modulus;
     let mut sigma = PolyMatrixRaw::zero(&params, 1, 1);
     sigma.data[7] = scale_k;
-    v[0] = client.encrypt_matrix_reg(&sigma.ntt());
+    v[0] = client.encrypt_matrix_reg(&sigma.ntt(), &mut rng, &mut rng_pub);
 
     let v_w_left = public_params.v_expansion_left.unwrap();
     let v_w_right = public_params.v_expansion_right.unwrap();

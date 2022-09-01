@@ -1,6 +1,6 @@
 import init, { 
     initialize,
-    generate_public_parameters,
+    generate_keys,
     generate_query,
     decode_response
 } from '../pkg/client.js';
@@ -283,13 +283,13 @@ function retrieveState() {
     return state;
 }
 
-function setStateFromKey(key) {
+function setStateFromKey(key, shouldGeneratePubParams) {
     console.log("Initializing...");
     window.key = key;
-    window.client = initialize(undefined, key);
+    window.client = initialize();
     console.log("done");
     console.log("Generating public parameters...");
-    window.publicParameters = generate_public_parameters(window.client);
+    window.publicParameters = generate_keys(window.client, key, shouldGeneratePubParams);
     console.log(`done (${publicParameters.length} bytes)`);
 }
 
@@ -308,14 +308,14 @@ async function setUpClient() {
     let state = retrieveState();
     if (state && await isStateValid(state)) {
         console.log("Loading previous client state")
-        setStateFromKey(state.key);
+        setStateFromKey(state.key, false);
         window.id = state.uuid;
         return true;
     } else {
         console.log("No state stored, generating new client state")
         let key = new Uint8Array(KEY_SIZE);
         self.crypto.getRandomValues(key);
-        setStateFromKey(key);
+        setStateFromKey(key, true);
         return false;
     }
 }

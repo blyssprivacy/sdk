@@ -5,7 +5,6 @@ use std::io::BufReader;
 use std::io::Read;
 use std::io::Seek;
 use std::io::SeekFrom;
-use std::time::Instant;
 
 use crate::aligned_memory::*;
 use crate::arith::*;
@@ -367,7 +366,11 @@ pub fn generate_random_db_and_get_item<'a>(
                 db_item.reduce_mod(params.pt_modulus);
 
                 if i == item_idx {
-                    item.copy_into(&db_item, instance * params.n + trial / params.n, trial % params.n);
+                    item.copy_into(
+                        &db_item,
+                        instance * params.n + trial / params.n,
+                        trial % params.n,
+                    );
                 }
 
                 for z in 0..params.poly_len {
@@ -497,9 +500,7 @@ pub fn load_preprocessed_db_from_file(params: &Params, file: &mut File) -> Align
     let mut v = AlignedMemory64::new(db_size_words);
     let v_mut_slice = v.as_mut_slice();
 
-    let now = Instant::now();
     load_file(v_mut_slice, file);
-    println!("Done loading ({} ms).", now.elapsed().as_millis());
 
     v
 }
@@ -513,7 +514,7 @@ pub fn fold_ciphertexts(
     if v_cts.len() == 1 {
         return;
     }
-    
+
     let further_dims = log2(v_cts.len() as u64) as usize;
     let ell = v_folding[0].cols / 2;
     let mut ginv_c = PolyMatrixRaw::zero(&params, 2 * ell, 1);
@@ -689,16 +690,7 @@ pub fn expand_query<'a>(
             v_gsw_inp.push(v[2 * i + 1].clone());
         }
     } else {
-        coefficient_expansion(
-            &mut v,
-            g,
-            0,
-            params,
-            &v_w_left,
-            &v_w_left,
-            &v_neg1,
-            0,
-        );
+        coefficient_expansion(&mut v, g, 0, params, &v_w_left, &v_w_left, &v_neg1, 0);
         for i in 0..dim0 {
             v_reg_inp.push(v[i].clone());
         }
@@ -733,9 +725,7 @@ pub fn process_query(
     let mut v_reg_reoriented;
     let v_folding;
     if params.expand_queries {
-        let now = Instant::now();
         (v_reg_reoriented, v_folding) = expand_query(params, public_params, query);
-        println!("expansion (took {} us).", now.elapsed().as_micros());
     } else {
         v_reg_reoriented = AlignedMemory64::new(query.v_buf.as_ref().unwrap().len());
         v_reg_reoriented
@@ -799,7 +789,8 @@ pub fn process_query(
 mod test {
     use super::*;
     use crate::client::*;
-    use rand::{prelude::SmallRng, Rng};
+    use rand::{Rng, SeedableRng};
+    use rand_chacha::ChaCha20Rng;
 
     const TEST_PREPROCESSED_DB_PATH: &'static str = "/home/samir/wiki/enwiki-20220320.dbp";
 
@@ -810,7 +801,7 @@ mod test {
     fn dec_reg<'a>(
         params: &'a Params,
         ct: &PolyMatrixNTT<'a>,
-        client: &mut Client<'a, SmallRng>,
+        client: &mut Client<'a>,
         scale_k: u64,
     ) -> u64 {
         let dec = client.decrypt_matrix_reg(ct).raw();
@@ -826,11 +817,7 @@ mod test {
         }
     }
 
-    fn dec_gsw<'a>(
-        params: &'a Params,
-        ct: &PolyMatrixNTT<'a>,
-        client: &mut Client<'a, SmallRng>,
-    ) -> u64 {
+    fn dec_gsw<'a>(params: &'a Params, ct: &PolyMatrixNTT<'a>, client: &mut Client<'a>) -> u64 {
         let dec = client.decrypt_matrix_reg(ct).raw();
         let idx = 2 * (params.t_gsw - 1) * params.poly_len + params.poly_len; // this offset should encode a large value
         let mut val = dec.data[idx] as i64;
@@ -848,8 +835,9 @@ mod test {
     fn coefficient_expansion_is_correct() {
         let params = get_params();
         let v_neg1 = params.get_v_neg1();
-        let mut seeded_rng = get_seeded_rng();
-        let mut client = Client::init(&params, &mut seeded_rng);
+        let mut rng = ChaCha20Rng::from_entropy();
+        let mut rng_pub = ChaCha20Rng::from_entropy();
+        let mut client = Client::init(&params);
         let public_params = client.generate_keys();
 
         let mut v = Vec::new();
@@ -861,8 +849,8 @@ mod test {
         let scale_k = params.modulus / params.pt_modulus;
         let mut sigma = PolyMatrixRaw::zero(&params, 1, 1);
         sigma.data[target] = scale_k;
-        v[0] = client.encrypt_matrix_reg(&sigma.ntt());
-        let test_ct = client.encrypt_matrix_reg(&sigma.ntt());
+        v[0] = client.encrypt_matrix_reg(&sigma.ntt(), &mut rng, &mut rng_pub);
+        let test_ct = client.encrypt_matrix_reg(&sigma.ntt(), &mut rng, &mut rng_pub);
 
         let v_w_left = public_params.v_expansion_left.unwrap();
         let v_w_right = public_params.v_expansion_right.unwrap();
@@ -892,14 +880,15 @@ mod test {
     fn regev_to_gsw_is_correct() {
         let mut params = get_params();
         params.db_dim_2 = 1;
-        let mut seeded_rng = get_seeded_rng();
-        let mut client = Client::init(&params, &mut seeded_rng);
+        let mut rng = ChaCha20Rng::from_entropy();
+        let mut rng_pub = ChaCha20Rng::from_entropy();
+        let mut client = Client::init(&params);
         let public_params = client.generate_keys();
 
         let mut enc_constant = |val| {
             let mut sigma = PolyMatrixRaw::zero(&params, 1, 1);
             sigma.data[0] = val;
-            client.encrypt_matrix_reg(&sigma.ntt())
+            client.encrypt_matrix_reg(&sigma.ntt(), &mut rng, &mut rng_pub)
         };
 
         let v = &public_params.v_conversion.unwrap()[0];
@@ -929,6 +918,8 @@ mod test {
     fn multiply_reg_by_database_is_correct() {
         let params = get_params();
         let mut seeded_rng = get_seeded_rng();
+        let mut rng = ChaCha20Rng::from_entropy();
+        let mut rng_pub = ChaCha20Rng::from_entropy();
 
         let dim0 = 1 << params.db_dim_1;
         let num_per = 1 << params.db_dim_2;
@@ -938,7 +929,7 @@ mod test {
         let target_idx_dim0 = target_idx / num_per;
         let target_idx_num_per = target_idx % num_per;
 
-        let mut client = Client::init(&params, &mut seeded_rng);
+        let mut client = Client::init(&params);
         _ = client.generate_keys();
 
         let (corr_item, db) = generate_random_db_and_get_item(&params, target_idx);
@@ -947,7 +938,7 @@ mod test {
         for i in 0..dim0 {
             let val = if i == target_idx_dim0 { scale_k } else { 0 };
             let sigma = PolyMatrixRaw::single_value(&params, val).ntt();
-            v_reg.push(client.encrypt_matrix_reg(&sigma));
+            v_reg.push(client.encrypt_matrix_reg(&sigma, &mut rng, &mut rng_pub));
         }
 
         let v_reg_sz = dim0 * 2 * params.poly_len;
@@ -984,6 +975,8 @@ mod test {
     fn fold_ciphertexts_is_correct() {
         let params = get_params();
         let mut seeded_rng = get_seeded_rng();
+        let mut rng = ChaCha20Rng::from_entropy();
+        let mut rng_pub = ChaCha20Rng::from_entropy();
 
         let dim0 = 1 << params.db_dim_1;
         let num_per = 1 << params.db_dim_2;
@@ -992,14 +985,14 @@ mod test {
         let target_idx = seeded_rng.gen::<usize>() % (dim0 * num_per);
         let target_idx_num_per = target_idx % num_per;
 
-        let mut client = Client::init(&params, &mut seeded_rng);
+        let mut client = Client::init(&params);
         _ = client.generate_keys();
 
         let mut v_reg = Vec::new();
         for i in 0..num_per {
             let val = if i == target_idx_num_per { scale_k } else { 0 };
             let sigma = PolyMatrixRaw::single_value(&params, val).ntt();
-            v_reg.push(client.encrypt_matrix_reg(&sigma));
+            v_reg.push(client.encrypt_matrix_reg(&sigma, &mut rng, &mut rng_pub));
         }
 
         let mut v_reg_raw = Vec::new();
@@ -1017,10 +1010,10 @@ mod test {
                 let value = (1u64 << (bits_per * j)) * bit;
                 let sigma = PolyMatrixRaw::single_value(&params, value);
                 let sigma_ntt = to_ntt_alloc(&sigma);
-                let ct = client.encrypt_matrix_reg(&sigma_ntt);
+                let ct = client.encrypt_matrix_reg(&sigma_ntt, &mut rng, &mut rng_pub);
                 ct_gsw.copy_into(&ct, 0, 2 * j + 1);
                 let prod = &to_ntt_alloc(client.get_sk_reg()) * &sigma_ntt;
-                let ct = &client.encrypt_matrix_reg(&prod);
+                let ct = &client.encrypt_matrix_reg(&prod, &mut rng, &mut rng_pub);
                 ct_gsw.copy_into(&ct, 0, 2 * j);
             }
 
@@ -1051,7 +1044,7 @@ mod test {
 
         let target_idx = seeded_rng.gen::<usize>() % (params.db_dim_1 + params.db_dim_2);
 
-        let mut client = Client::init(params, &mut seeded_rng);
+        let mut client = Client::init(&params);
 
         let public_params = client.generate_keys();
         let query = client.generate_query(target_idx);
@@ -1077,7 +1070,7 @@ mod test {
 
         let target_idx = seeded_rng.gen::<usize>() % (params.db_dim_1 + params.db_dim_2);
 
-        let mut client = Client::init(params, &mut seeded_rng);
+        let mut client = Client::init(&params);
 
         let public_params = client.generate_keys();
         let query = client.generate_query(target_idx);

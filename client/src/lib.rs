@@ -1,6 +1,6 @@
 use std::convert::TryInto;
 
-use rand::{thread_rng, RngCore, SeedableRng};
+use rand::SeedableRng;
 use rand_chacha::ChaCha20Rng;
 use spiral_rs::{client::*, discrete_gaussian::*, util::*};
 use wasm_bindgen::prelude::*;
@@ -22,19 +22,19 @@ macro_rules! console_log {
 // Avoids a lifetime in the return signature of bound Rust functions
 #[wasm_bindgen]
 pub struct WrappedClient {
-    client: &'static mut Client<'static, ChaCha20Rng>,
+    client: &'static mut Client<'static>,
 }
 
 // Very simply test to ensure random generation is not obviously biased.
 fn _dg_seems_okay() {
     let params = get_test_params();
-    let mut rng = thread_rng();
-    let mut dg = DiscreteGaussian::init(&params, &mut rng);
+    let mut rng = ChaCha20Rng::from_entropy();
+    let dg = DiscreteGaussian::init(&params);
     let mut v = Vec::new();
     let trials = 10000;
     let mut sum = 0;
     for _ in 0..trials {
-        let val = dg.sample();
+        let val = dg.sample(&mut rng);
         v.push(val);
         sum += val;
     }
@@ -46,7 +46,7 @@ fn _dg_seems_okay() {
 
 // Initializes a client; can optionally take in a set of parameters
 #[wasm_bindgen]
-pub fn initialize(json_params: Option<String>, seed: Box<[u8]>) -> WrappedClient {
+pub fn initialize(json_params: Option<String>) -> WrappedClient {
     // spiral_rs::ntt::test::ntt_correct();
     let cfg = r#"
         {'n': 2,
@@ -67,26 +67,20 @@ pub fn initialize(json_params: Option<String>, seed: Box<[u8]>) -> WrappedClient
         cfg = json_params.unwrap();
     }
 
-    let seed_buf = (*seed).try_into().unwrap();
-
     let params = Box::leak(Box::new(params_from_json(&cfg)));
-    let rng = Box::leak(Box::new(ChaCha20Rng::from_seed(seed_buf)));
-
-    let client = Box::leak(Box::new(Client::init(params, rng)));
+    let client = Box::leak(Box::new(Client::init(params)));
 
     WrappedClient { client }
 }
 
 #[wasm_bindgen]
-pub fn generate_public_parameters(c: &mut WrappedClient) -> Box<[u8]> {
-    let res = c.client.generate_keys().serialize().into_boxed_slice();
-
-    // important to re-seed here; only public key is deterministic, not queries
-    let mut rng = thread_rng();
-    let mut new_seed = [0u8; 32];
-    rng.fill_bytes(&mut new_seed);
-    *c.client.get_rng() = ChaCha20Rng::from_seed(new_seed);
-    res
+pub fn generate_keys(c: &mut WrappedClient, seed: Box<[u8]>, generate_pub_params: bool) -> Option<Box<[u8]>> {
+    if generate_pub_params {
+        Some(c.client.generate_keys_from_seed((*seed).try_into().unwrap()).serialize().into_boxed_slice())
+    } else {
+        c.client.generate_secret_keys_from_seed((*seed).try_into().unwrap());
+        None
+    }
 }
 
 #[wasm_bindgen]

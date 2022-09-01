@@ -1,6 +1,6 @@
 use rand::distributions::WeightedIndex;
 use rand::prelude::Distribution;
-use rand::Rng;
+use rand_chacha::ChaCha20Rng;
 
 use crate::params::*;
 use crate::poly::*;
@@ -8,14 +8,13 @@ use std::f64::consts::PI;
 
 pub const NUM_WIDTHS: usize = 8;
 
-pub struct DiscreteGaussian<'a, T: Rng> {
+pub struct DiscreteGaussian {
     choices: Vec<i64>,
     dist: WeightedIndex<f64>,
-    pub rng: &'a mut T,
 }
 
-impl<'a, T: Rng> DiscreteGaussian<'a, T> {
-    pub fn init(params: &'a Params, rng: &'a mut T) -> Self {
+impl DiscreteGaussian {
+    pub fn init(params: &Params) -> Self {
         let max_val = (params.noise_width * (NUM_WIDTHS as f64)).ceil() as i64;
         let mut choices = Vec::new();
         let mut table = vec![0f64; 0];
@@ -26,21 +25,21 @@ impl<'a, T: Rng> DiscreteGaussian<'a, T> {
         }
         let dist = WeightedIndex::new(&table).unwrap();
 
-        Self { choices, dist, rng }
+        Self { choices, dist }
     }
 
     // FIXME: not constant-time
-    pub fn sample(&mut self) -> i64 {
-        self.choices[self.dist.sample(&mut self.rng)]
+    pub fn sample(&self, rng: &mut ChaCha20Rng) -> i64 {
+        self.choices[self.dist.sample(rng)]
     }
 
-    pub fn sample_matrix(&mut self, p: &mut PolyMatrixRaw) {
+    pub fn sample_matrix(&self, p: &mut PolyMatrixRaw, rng: &mut ChaCha20Rng) {
         let modulus = p.get_params().modulus;
         for r in 0..p.rows {
             for c in 0..p.cols {
                 let poly = p.get_poly_mut(r, c);
                 for z in 0..poly.len() {
-                    let mut s = self.sample();
+                    let mut s = self.sample(rng);
                     s += modulus as i64;
                     s %= modulus as i64; // FIXME: not constant time
                     poly[z] = s as u64;
@@ -52,21 +51,19 @@ impl<'a, T: Rng> DiscreteGaussian<'a, T> {
 
 #[cfg(test)]
 mod test {
-    use rand::thread_rng;
-
     use super::*;
     use crate::util::*;
 
     #[test]
     fn dg_seems_okay() {
         let params = get_test_params();
-        let mut rng = thread_rng();
-        let mut dg = DiscreteGaussian::init(&params, &mut rng);
+        let dg = DiscreteGaussian::init(&params);
+        let mut rng = get_chacha_rng();
         let mut v = Vec::new();
         let trials = 10000;
         let mut sum = 0;
         for _ in 0..trials {
-            let val = dg.sample();
+            let val = dg.sample(&mut rng);
             v.push(val);
             sum += val;
         }

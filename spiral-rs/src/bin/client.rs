@@ -1,4 +1,3 @@
-use rand::thread_rng;
 use serde_json::Value;
 use spiral_rs::client::*;
 use spiral_rs::util::*;
@@ -67,8 +66,7 @@ fn main() {
     let idx_target: usize = (&args[2]).parse().unwrap();
 
     println!("initializing client");
-    let mut rng = thread_rng();
-    let mut c = Client::init(&params, &mut rng);
+    let mut c = Client::init(&params);
     println!("generating public parameters");
     let pub_params = c.generate_keys();
     let pub_params_buf = pub_params.serialize();

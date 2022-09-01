@@ -1,10 +1,10 @@
-use rand::Rng;
 use rand::thread_rng;
+use rand::Rng;
+use spiral_rs::arith::*;
 use spiral_rs::client::*;
+use spiral_rs::params::*;
 use spiral_rs::server::*;
 use spiral_rs::util::*;
-use spiral_rs::arith::*;
-use spiral_rs::params::*;
 use std::env;
 use std::fs;
 use std::time::Instant;
@@ -12,7 +12,12 @@ use std::time::Instant;
 fn print_params_summary(params: &Params) {
     let db_elem_size = params.item_size();
     let total_size = params.num_items() * db_elem_size;
-    println!("Using a {} x {} byte database ({} bytes total)", params.num_items(), db_elem_size, total_size);    
+    println!(
+        "Using a {} x {} byte database ({} bytes total)",
+        params.num_items(),
+        db_elem_size,
+        total_size
+    );
 }
 
 fn main() {
@@ -36,9 +41,13 @@ fn main() {
     let mut rng = thread_rng();
     let idx_target: usize = rng.gen::<usize>() % params.num_items();
 
-    println!("fetching index {} out of {} items", idx_target, params.num_items());
+    println!(
+        "fetching index {} out of {} items",
+        idx_target,
+        params.num_items()
+    );
     println!("initializing client");
-    let mut client = Client::init(&params, &mut rng);
+    let mut client = Client::init(&params);
     println!("generating public parameters");
     let pub_params = client.generate_keys();
     let pub_params_buf = pub_params.serialize();
