@@ -1,0 +1,22 @@
+.App-header {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100vw;
+  background-color: #282c34;
+  height: 85px;
+  padding: 0 120px;
+  font-size: 36px;
+  color: white;
+  display: flex;
+  align-items: center;
+}
+
+.App-main {
+  padding: 120px;
+  padding-top: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 40px;
+  max-width: 800px;
+}

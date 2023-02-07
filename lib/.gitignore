@@ -1,0 +1,6 @@
+target/
+*.gz
+*.dat
+*.DS_Store
+.cache/
+dist/

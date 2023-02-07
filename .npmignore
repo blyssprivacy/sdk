@@ -1,0 +1,17 @@
+.editorconfig
+.github/
+.vscode/
+examples/
+target/
+python/
+js/tests/
+js/bridge/
+lib/
+docs/
+
+.eslintrc.json
+.prettierrc.json
+.prettierignore
+jest.config.js
+tsconfig.json
+webpack.config.js

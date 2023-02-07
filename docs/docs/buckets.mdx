@@ -1,0 +1,70 @@
+---
+sidebar_position: 4
+---
+
+# Buckets
+
+A Blyss bucket is a key-value store: it allows you to write data in key-value pairs, and then later retrieve values using keys.
+
+## Operations
+
+Clients can **create** and **destroy** buckets. Bucket destruction is permanent, and all data inside the bucket is deleted.
+
+Clients can modify the data inside a bucket with:
+
+- **Write**: Sets the given key-value pairs in the bucket, overriding any previous values.
+- **Delete Key**: Removes a key and its corresponding value from the bucket.
+
+Clients can read the data inside a bucket with:
+
+- **Private Read**: Gets the value in the bucket corresponding to the given key, privately.
+- **List Keys**: Gets a list of all the keys in the bucket.
+
+## Consistency
+
+All writes are idempotent. Once a write completes successfully, subsequent reads will reflect the updated value. While a write is in progress, reads may return the new or old value.
+
+## Names
+
+Bucket names must be 1-128 characters long, composed of only lowercase letters (`[a-z]`), digits (`[0-9]`), and hyphens (`-`).
+
+Blyss buckets exist in account-local namespaces by default. You can name buckets whatever you want (subject to the basic format rules above), and they will only be visible to API keys owned by your Blyss account.
+
+### Global Buckets
+
+If you want to share Blyss buckets across accounts, you can opt-in to the global Blyss namespace by prefixing your bucket name with `global.`. This is the only way in which the `.` character is allowed in bucket names. The prefix counts towards the bucket name length limit. Global buckets must be uniquely named.
+
+## Permissions
+
+Blyss buckets are private by default. Permissions get granted to API keys, and can be limited in scope to three levels: read, write, and admin. One API key is generated when you sign up, and an additional read-only API key is generated for each bucket you create. When you create a bucket using an API key, that API key gets Admin permissions for that bucket.
+
+### Read
+Permits idempotent, read-only operations, including listing keys and reading values.
+
+### Write
+Permits write operations, such as adding, modifying, or deleting key-value pairs.
+(includes all permissions in Read)
+
+### Admin
+Permits modification of permissions related to this bucket, and bucket destruction.
+(includes all permissions in Write)
+
+### Open Access
+Buckets intended for widespread consumption can enable open-access mode. An open-access bucket automatically grants Read permissions to every Blyss API key.
+
+
+## Limits
+
+These are the service-imposed size and format limits on buckets and the data they contain.
+
+### Keys
+
+Keys can be any UTF-8 serializable string of length 1-1024, inclusive.
+
+### Values
+
+Values can be arbitrary bytes, up to a length limit dependent on bucket configuration.
+
+### Configuration
+
+Blyss buckets are configured upon creation for a maximum total size, maximum value size, and maximum number of entries. In the Free Tier, buckets are configured with a 1 GB maximum total size, 1 KB maximum value size, and 1 million items maximum. These limits are subject to change. For larger configurations, please [contact us](#TODO).

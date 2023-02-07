@@ -1,0 +1,27 @@
+[package]
+name = "spiral-rs-js-bridge"
+description = "Bridge crate between the spiral-rs-client library and the JS client"
+version = "0.1.0"
+authors = ["Samir Menon <samir@blyss.dev>"]
+license = "MIT"
+repository = "https://github.com/blyssprivacy/client-sdk"
+categories = ["wasm"]
+readme = "README.md"
+edition = "2018"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+wasm-bindgen = "0.2.83"
+spiral-rs = { path = "../../lib/spiral-rs" }
+
+[dev-dependencies]
+wasm-bindgen-test = "0.2.45"
+futures = "0.1.27"
+
+[profile.release]
+opt-level = "s"
+# lto = "fat"
+# codegen-units = 1
+# panic = "abort"

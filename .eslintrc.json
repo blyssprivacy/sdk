@@ -1,0 +1,20 @@
+{
+    "parser": "@typescript-eslint/parser",
+    "plugins": [
+        "@typescript-eslint",
+        "prettier"
+    ],
+    "extends": [
+        "eslint:recommended",
+        "plugin:@typescript-eslint/eslint-recommended",
+        "plugin:@typescript-eslint/recommended",
+        "prettier"
+    ],
+    "rules": {
+        "no-console": 0,
+        "prettier/prettier": 1,
+        "@typescript-eslint/no-explicit-any": 0,
+        "no-empty-function": 0,
+        "@typescript-eslint/no-empty-function": 0
+    }
+}

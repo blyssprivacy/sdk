@@ -1,0 +1,10 @@
+{
+  "type": "module",
+  "dependencies": {
+    "@blyss/client-sdk": "latest"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.1",
+    "typescript": "^4.9.4"
+  }
+}

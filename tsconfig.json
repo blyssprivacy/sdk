@@ -1,0 +1,23 @@
+{
+  "compilerOptions": {
+    "outDir": "dist",
+    "sourceMap": true,
+    "noImplicitAny": true,
+    "module": "ES6",
+    "target": "ES6",
+    "allowJs": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "declaration": true,
+    "declarationDir": "dist",
+    "declarationMap": true,
+  },
+  "include": ["./js/**/*"],
+  "exclude": [
+    "bridge",
+    "node_modules",
+    "examples",
+    "dist",
+    "docs"
+  ],
+}

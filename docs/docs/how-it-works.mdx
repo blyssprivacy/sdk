@@ -1,0 +1,114 @@
+---
+sidebar_position: 2
+---
+
+import Center from "@site/src/components/Center";
+import SecurityModel from "/img/security-model.svg";
+import SepiaExample from "/img/sepia-example.svg";
+import PIRFromFHE from "/img/pir-from-fhe.svg";
+
+# How it works
+
+The Blyss bucket service is a key-value store with private retrievals. Clients can use the Blyss SDK to create buckets, write data to them, and make private retrievals from them.
+
+In this document, we'll explain what private retrieval is, and how the Blyss service makes it possible at a high level. For a more complete explanation, including the underlying mathematics, [check out this blog post](https://blintzbase.com/posts/pir-and-fhe-from-scratch/).
+
+## Goal: private retrieval
+
+The security guarantee of a _private retrieval_ is that no entity, not even the Blyss bucket service itself, can determine the key being retrieved. The security model assumes from the start that the Blyss bucket service, and all other entities outside of the client's device, are _completely untrusted_.
+
+<Center space={10}>
+  <SecurityModel />
+</Center>
+
+<!-- This is an unusually strong threat model for a key-value store. Typically, when using services like [Amazon S3](https://aws.amazon.com/s3/) or a managed [Redis](https://redis.io/), the server learns information about every retrieval, keeping logs of what was retrieved when. The extent of this logging is opaque and can change unilaterally. -->
+
+Private retrievals were essentially **impossible** until recently. Data stores like [Amazon S3](https://aws.amazon.com/s3/), [Firebase](https://firebase.google.com/), or [Redis](https://redis.io/) cannot offer private retrievals - they must know the item being retrieved so that they can fetch it from memory or disk. The only way to perform private retrievals from these services is to download the _entire_ database.
+
+Blyss uses advancements in state-of-the-art cryptography to build the first generally available key-value store with private retrievals.
+
+<!-- The Blyss security model is unique: we _cannot_ learn information about retrievals. -->
+
+<!-- This is a powerful security property, and can be used to build new kinds of privacy-preserving apps. -->
+
+<!-- relies on the secure implementation of cryptographic primitives in the Blyss SDK, which is open source. -->
+
+## Tool: homomorphic encryption
+
+The cryptography that powers Blyss is called "homomorphic encryption". First, some history: homomorphic encryption was a 'holy grail' for academic cryptographers for over 20 years, until it was finally constructed for the first time by Craig Gentry in 2009. Early schemes were comically slow: it could take hours to encrypt small amounts of data. Thanks to hard work from a large set of academic cryptographers, homomorphic encryption has _finally_ become fast enough in the last two years.
+
+What kind of encryption could so fascinate people that they spend decades working to build it? Well, basically, homomorphic encryption lets you **perform computation on encrypted data**. This is really unique: normally, when you encrypt something, it gets totally garbled. If you tried to perform computation on normally encrypted data, you would get meaningless garbage.
+
+<Center space={10}>
+  <SepiaExample />
+</Center>
+
+With homomorphic encryption, everything still gets garbled, but you can do strange and wonderful new things. For example, if you _homomorphically_ encrypt an image, and send the encrypted image to an untrusted server, the server can apply filters (e.g. 'sepia' or 'background blur') _directly to the encrypted image_. Everything stays encrypted the whole time - the server never gets to see the original or filtered image - but you get back an encrypted version of the filtered image. It's almost like the sever has a blindfold on, and is able to 'do its job' without learning any inputs or outputs. This is totally impossible with normal encryption, and opens up a whole new world of services and applications that can serve end users without learning their sensitve data.
+
+<!-- For example, you can now [read Wikipedia using homomorphic encryption](https://spiralwiki.com), something completely unthinkable just 10 years ago. -->
+
+<!-- So, what exactly is homomorphic encrpytion? The basic property of homomorphic encryption is that it allows someone to compute on encrypted data, without learning the true values of the underlying data. For example, a client could homomorphically encrypt an image, and send the encrypted image to an untrusted server. The sever could apply a filter to the encrypted image and get an encrypted result. Finally, the server could send this encrypted result back to the client, who could decrypt it and see the filtered image. The key feature of homomorphic encryption is that all of this can happen without the server ever seeing the image you uploaded. -->
+
+:::info
+
+Homomorphic encryption is an emerging technology, and is still in the process of [being standardized](https://homomorphicencryption.org/standard/). The underlying cryptographic assumptions are [well-founded](https://en.wikipedia.org/wiki/Lattice-based_cryptography) and have been extensively analyzed as a byproduct of [efforts to standardize post-quantum cryptography](https://csrc.nist.gov/Projects/post-quantum-cryptography/post-quantum-cryptography-standardization), but it is not yet available in libraries like OpenSSL and OS's.
+
+:::
+
+## Private retrievals using homomorphic encryption
+
+So, how does Blyss actually use homomorphic encryption to enable private retrievals? Here's a high-level summary:
+
+<Center space={10}>
+  <PIRFromFHE />
+</Center>
+
+1. The client homomorphically encrypts a large vector of 0's and 1's. The vector has encrypted 0's in almost every entry, except that it has '1' in the entry corresponding to the item we are trying to retrieve. The client sends this large vector of encrypted 0's and 1's as the query.
+   :::info
+
+   The client uploads a series of encrypted 0's and 1's, but the server cannot tell which are 0, and which are 1; each encryption is unique random-looking.
+
+   :::
+
+2. The server computes a **dot-product** between the data in the bucket and the query. Specifically, it multiplies each item in the bucket by the corresponding encrypted 0 or 1 in the query, and then adds up all the results. All the non-desired items will get multiplied by zero, so we're left with only the client's desired item. Thanks to the special properties of homomorphic encryption, all of this happens _without the server learning anything_ about which item the client wanted!
+
+3. The server sends back this final encryption, and the client decrypts it, getting the item that it wanted.
+
+Basically, we can "select" an item from the bucket using 0's and 1's, and homomorphic encryption lets the server do that while "blindfolded" - without learning which value was 1. This is an abridged version of what is happening under the hood: Blyss uses cutting-edge schemes that compress the query significantly and structure the database as many-dimensional. The [underlying cryptographic schemes](https://eprint.iacr.org/2022/368.pdf) are peer-reviewed and were [presented at IEEE S&P 2022](https://www.ieee-security.org/TC/SP2022/program-papers.html#:~:text=Spiral%3A%20Fast%2C%20High%2DRate%20Single%2DServer%20PIR%20via%20FHE%20Composition).
+
+## SDK
+
+To perform a private retrieval, you need to homomorphically encrypt 0's and 1's. Since homomorphic encryption is not (yet) a part of standard cryptography toolkits like OpenSSL, we distribute an open-source SDK that provides this functionality. Our implementation of all cryptography is written in Rust, with basic side-channel mitigations. As this space matures, we hope to encourage multiple open-source implementations of a common private retrieval protocol. The SDK is versioned, open source, and has reproducible builds, mitigating the potential for a malicious actor to inject compromised SDK code into the software supply chain.
+
+<!-- Bugs in this SDK do have the potential to compromise query privacy - that's why the SDK is open source, and w -->
+
+<!-- To fulfill this goal, clients use **homomorphic encryption** to hide the retrievals they make from a bucket. Homomorphic encryption is a new kind of encryption that enables computation on encrypted data - you can read more about -->
+
+<!-- relies on the secure implementation of cryptographic primitives in the Blyss SDK, which is open source. -->
+
+<!-- Our security goal for client queries is a complete, formal statement: absolutely _no information_ about which key the client is retrieving should be possible for the Blyss service to obtain. -->
+
+<!-- The system boundary is the set of functions that the Blyss SDK exposes. Client operation outside these functions could always in theory leak information (e.g. malware). You can read more tips on how to architect privacy-preserving apps in [this article](../making-apps). -->
+
+<!-- - Secure implementation of the Blyss SDK
+- Cryptographic security of the underlying homomorphic encryption scheme -->
+
+<!-- Notably, the Blyss system’s primary security goal does **_not_** rely on a secure implementation of the Blyss service. The clients retrievals remain private even if the service is compromised. -->
+
+<!-- ## Architecture
+
+### Client
+
+The client uses the **Blyss SDK** to access the Blyss service. The SDK is available in multiple languages and is open source. All core cryptographic operations are written in Rust, and then compiled for many runtimes and architectures.
+
+### Service
+
+T
+
+### API Keys
+
+When you sign up for the Blyss service, you get an initial **API key**. This key allows you to create buckets, write items to buckets, and privately retrieve items from buckets. This API key serves to enforce permissions and rate-limiting on data in Blyss buckets; it is \***\*not\*\*** used to encrypt private retrievals, and if leaked, it does _not_ compromise the security of past queries.
+
+From the **Blyss admin console**, you can create, list, and revoke API keys.
+
+### -->

@@ -1,0 +1,37 @@
+---
+sidebar_position: 1
+---
+
+import Tabs from "@theme/Tabs";
+import TabItem from "@theme/TabItem";
+
+import Center from "@site/src/components/Center";
+import BasicExample from "/img/basicexample.png";
+
+# Getting started
+
+The Blyss bucket service is a key-value store (similar to Amazon S3 or Redis) that allows private retrievals using homomorphic encryption.
+
+The special privacy property of Blyss is that retrieval from a bucket is _completely_ private. No entity, _not even the Blyss service itself_, can determine what key a client retrieves. This property is cryptographic; it's not based on the security of special hardware enclaves or trusted third parties. You can read more about the security properties in ["How it works"](./how-it-works).
+
+You can use the Blyss bucket service to build fundamentally new kinds of privacy-preserving applications that collect less information from users.
+
+:::caution
+
+The Blyss bucket service is in beta. Data stored in Blyss should not be considered durable. [Contact us](mailto:founders@blyss.dev) if you need access to a higher level of service.
+
+:::
+
+### Get your API key
+
+To get an API key, [sign up here](https://blyss.dev/auth/sign-up). You will see an API key in the [Blyss Console](https://blyss.dev/console/apikeys) once you log in.
+
+An API key allows you to create buckets and read and write to them. Your API key does not encrypt anything - it is only used for rate-limiting and enforcing bucket ownership.
+
+### Use the SDK to make private retrievals
+
+To make queries against a Blyss bucket, you will need the **Blyss SDK** for your preferred programming language. Currently, only JavaScript/TypeScript is supported.
+
+You can try the SDK directly from your browser using [our CodeSandbox](#). 
+
+To use the SDK in an existing project, check out [our repository](#).

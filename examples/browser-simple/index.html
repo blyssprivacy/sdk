@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <title>Blyss Demo</title>
+  <style>
+    html {
+      padding: 16px;
+    }
+
+    div {
+      padding: 0 16px;
+    }
+
+    *:not(pre) {
+      font-family: sans-serif;
+    }
+  </style>
+</head>
+
+<body>
+  <h1>Blyss Demo</h1>
+  <div>
+    <p>
+      <strong>Bucket contents</strong>
+    </p>
+    <div>
+      <pre>
+{
+  "California": "Sacramento",
+        "Ohio": "Columbus",
+    "New York": "Albany"
+}
+      </pre>
+    </div>
+  </div>
+
+  <div>
+    <p>
+      <strong>Perform a private retrieval</strong>
+    </p>
+    <div>
+      <p>
+        Private retrieval:
+      </p>
+      <div>
+        <p>
+          <label>
+            <select id="key-input">
+              <option value="California">California</option>
+              <option value="Ohio">Ohio</option>
+              <option value="New York">New York</option>
+            </select>
+          </label>
+          <button id="submit">
+            &gt;
+          </button>
+        </p>
+      </div>
+    </div>
+
+    <div>
+      <p>
+        Result:
+      </p>
+      <div>
+        <pre id="result-output">...</pre>
+      </div>
+    </div>
+  </div>
+
+  <script src="../../dist/blyss-bundle.min.js"></script>
+  <script src="main.js"></script>
+</body>
+
+</html>

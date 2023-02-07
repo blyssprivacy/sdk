@@ -1,0 +1,29 @@
+---
+sidebar_position: 5
+---
+
+# Performance
+
+The Blyss bucket service has unique performance characteristics, detailed here.
+
+## First-Retrieval Overhead
+
+The first private retrieval that a client makes against a bucket requires more upload and/or download communication than baseline. Later queries from the same client do not incur this first-retrieval cost.
+
+If your application allows it, it is highly recommended that you:
+
+1. Serialize the client state to a secret seed using `toSecretSeed()`.
+2. Store this secret seed somewhere durable and secure. For example, on the web, you could store this in `localStorage`.
+3. When starting fresh later, first attempt to restore state from the secret seed. If this fails, you can always just construct a new client from scratch.
+
+This pattern allows clients to skip the time-consuming first-retrieval overhead when possible.
+
+## Writes
+
+Writes to a bucket are generally similar in speed to writes to a standard key-value store.
+
+Writes are significantly faster when batched - whenever possible, group multiple writes into a single API call.
+
+## Private Retrievals
+
+Private retrievals from a bucket are generally slower and take more communication than normal retrievals from a key-value store. Depending on the application, this overhead can be significant or negligible.

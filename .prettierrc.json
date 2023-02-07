@@ -1,0 +1,15 @@
+{
+  "singleQuote": true,
+  "printWidth": 80,
+  "tabWidth": 2,
+  "trailingComma": "none",
+  "semi": true,
+  "arrowParens": "avoid",
+  "plugins": [
+    "prettier-plugin-jsdoc"
+  ],
+  "importOrderSeparation": true,
+  "importOrderSortSpecifiers": true,
+  "jsdocPrintWidth": 80,
+  "parser": "typescript"
+}

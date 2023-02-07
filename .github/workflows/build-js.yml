@@ -1,0 +1,49 @@
+name: Build the SDK
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+
+jobs:
+  client-build:
+    name: Build SDK
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Use Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '19.x'
+
+      - name: Install wasm-pack
+        uses: jetli/wasm-pack-action@f98777369a49686b132a9e8f0fdd59837bf3c3fd
+        with:
+          version: v0.10.3
+
+      - name: Install dependencies
+        run: |
+          npm ci
+
+      - name: Run build
+        run: |
+          npm run build
+
+      - name: Run tests
+        run: |
+          npm test
+          
+      - name: Upload single-file bundle
+        uses: actions/upload-artifact@v3
+        with:
+          name: sdk-bundle
+          path: dist/blyss-bundle.min.js
+      
+      - name: Upload complete bundle
+        uses: actions/upload-artifact@v3
+        with:
+          name: sdk
+          path: dist/

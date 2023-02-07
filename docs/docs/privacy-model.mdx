@@ -1,0 +1,33 @@
+---
+sidebar_position: 3
+---
+
+# Privacy model
+
+## Client privacy
+
+The primary goal of the Blyss service is to minimize what the server learns about clients.
+There are some limitations to our guarantees:
+1. Client writes are not private.
+2. The amount of data in a bucket is not private.
+3. The timing and quantities of retrievals made by clients are not private.
+
+See the best practices below for guidance on how to work around these limitations.
+
+## Server privacy
+
+Some applications benefit from minimizing what clients learn about the server's contents.
+
+A standard Blyss bucket allows any client with read access to retrieve all values. To restrict clients ability to dump bucket contents, query caps can be used: for example, you could issue each client an API key with a fixed quota of allowed queries. However, Blyss buckets respond to private queries with a payload that could contain more values than just that of the queried key. If it is crucial to limit the ability of clients to dumpt the database, there are alternative solutions; contact us for more details.
+
+## Data privacy
+
+By default, the Blyss service sees the contents of items that you put into a Blyss bucket. To enable end-to-end encryption for a bucket, you need to manage an encryption key known only to your users or service, and encrypt every value written to the bucket. An automated way to enable this is in development; contact us for more details.
+
+## Best practices
+
+There are some basic best practices for delivering privacy to end users:
+
+- Since writes are not private, writes and private retrievals should generally be decoupled. The best way to achieve this is through a "producer/consumer" model: a "producer" server writes new data to the bucket, while several end-user "consumer" clients periodically perform private retrievals on the bucket.
+- When creating a bucket, choose a max item size that will accomodate the largest item you expect to store. If you must store larger items later, create a new bucket with a larger max item size. It's generally a bad practice to store larger items by sharding them across multiple keys, since clients who make bursts of reads to retrieve large items may leak size metadata.
+- In the privacy model for your app, make sure to account for the fact that the timing of client reads is *not* private.
