@@ -147,6 +147,32 @@ export class Bucket {
     return (await this.performPrivateReads([key]))[0];
   }
 
+  private async getHint(): Promise<Uint8Array> {
+    return this.api.hint(this.name);
+  }
+
+  private async performDoublePIRRead(key: string): Promise<boolean> {
+    const idx = this.dpLib.get_row(key);
+    const hintPromise = this.getHint();
+    const query = this.dpLib.generate_query(idx);
+    this.dpLib.load_hint(await hintPromise);
+
+    const queryResult = await this.getRawResponse(query);
+    const decryptedResult = this.dpLib.decode_response(queryResult);
+    const extractedResult = this.dpLib.extract_result(decryptedResult);
+    return extractedResult;
+  }
+
+  private ensureSpiral() {
+    if (this.scheme !== 'spiral')
+      throw 'Cannot perform this action on this bucket';
+  }
+
+  private ensureDoublePIR() {
+    if (this.scheme !== 'doublepir')
+      throw 'Cannot perform this action on this bucket';
+  }
+
   /**
    * Initialize a client for a single existing Blyss bucket. You should not need
    * to call this method directly. Instead, call `client.connect()` to connect
@@ -189,6 +215,7 @@ export class Bucket {
    *   data.
    */
   async setup(uuid?: string) {
+    this.ensureSpiral();
     if (uuid && this.check(uuid)) {
       this.lib.generateKeys(false);
       this.uuid = uuid;
@@ -256,6 +283,8 @@ export class Bucket {
    * @param {string} key - The key to delete.
    */
   async deleteKey(key: string) {
+    this.ensureSpiral();
+
     await this.api.deleteKey(this.name, key);
   }
 
@@ -277,6 +306,8 @@ export class Bucket {
    * @param {string} key - The key to _privately_ retrieve the value of.
    */
   async privateRead(key: string): Promise<any> {
+    this.ensureSpiral();
+
     return (await this.performPrivateRead(key)).data;
   }
 
@@ -290,6 +321,8 @@ export class Bucket {
    * @param {string} key - The key to _privately_ retrieve the value of.
    */
   async privateReadWithMetadata(key: string): Promise<DataWithMetadata> {
+    this.ensureSpiral();
+
     return await this.performPrivateRead(key);
   }
 
@@ -349,9 +382,10 @@ export class Bucket {
   }
 
   /**
-   * Privately checks if the given key is in the checklist-enabled bucket.
-   * This method is only supported on special global buckets that are checklist-enabled.
-   * The `supportsChecklistInclusion()` method returns a boolean indicating support.
+   * Privately checks if the given key is in the checklist-enabled bucket. This
+   * method is only supported on special global buckets that are
+   * checklist-enabled. The `supportsChecklistInclusion()` method returns a
+   * boolean indicating support.
    *
    * @param key - The key to _privately_ check against the checklist.
    */
