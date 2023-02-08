@@ -1,5 +1,5 @@
 import './App.css';
-import { Bucket, Client } from '@blyss/client-sdk';
+import { Bucket, Client } from '@blyss/sdk';
 import React, { ReactNode } from 'react';
 
 // This function gets called only on the first query
