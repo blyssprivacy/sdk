@@ -1,7 +1,7 @@
 import { seedFromString } from '../client/seed';
-
 import {
   ApiClient,
+  DoublePIRApiClient,
   decode_response,
   extract_result,
   generate_keys,
@@ -49,3 +49,5 @@ export class BlyssLib {
     this.secretSeed = secretSeed;
   }
 }
+
+export { DoublePIRApiClient };

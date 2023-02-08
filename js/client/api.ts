@@ -10,6 +10,7 @@ const META_PATH = '/meta';
 const BLOOM_PATH = '/bloom';
 const LIST_KEYS_PATH = '/list-keys';
 const SETUP_PATH = '/setup';
+const HINT_PATH = '/hint';
 const WRITE_PATH = '/write';
 const READ_PATH = '/private-read';
 
@@ -244,6 +245,23 @@ class Api {
     await postFormData(prelim_result['url'], prelim_result['fields'], data);
 
     return prelim_result;
+  }
+
+  /**
+   * Download hint data.
+   *
+   * @param bucketName The name of the bucket to get the hint data for.
+   */
+  async hint(bucketName: string): Promise<Uint8Array> {
+    const prelim_result = await getData(
+      this.apiKey,
+      this.urlFor(bucketName, HINT_PATH),
+      true
+    );
+
+    // perform the long download
+    const result = await getData(null, prelim_result['url'], false);
+    return result;
   }
 
   /** Destroy this bucket. */

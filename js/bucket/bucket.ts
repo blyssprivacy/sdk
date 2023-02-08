@@ -11,7 +11,7 @@ import {
   serializeChunks,
   wrapKeyValue
 } from '../data/serializer';
-import { BlyssLib } from '../lib/blyss_lib';
+import { BlyssLib, DoublePIRApiClient } from '../lib/blyss_lib';
 
 /**
  * Maximum number of private reads to perform before using the Bloom filter
@@ -51,8 +51,14 @@ export class Bucket {
   /** The metadata of this bucket. */
   metadata: BucketMetadata;
 
+  /** The underlying PIR scheme to use to access this bucket. */
+  scheme: 'spiral' | 'doublepir';
+
   /** The inner WASM client for this instance of the client. */
   lib: BlyssLib;
+
+  /** The inner DoublePIR WASM client for this instance of the client. */
+  dpLib: DoublePIRApiClient;
 
   /** The public UUID of this client's public parameters. */
   uuid?: string;
@@ -67,6 +73,7 @@ export class Bucket {
     this.api = api;
     this.name = name;
     this.secretSeed = getRandomSeed();
+    this.scheme = 'spiral';
     if (secretSeed) {
       this.secretSeed = secretSeed;
     }
@@ -157,7 +164,14 @@ export class Bucket {
   ): Promise<Bucket> {
     const b = new this(api, name, secretSeed);
     b.metadata = await b.api.meta(b.name);
-    b.lib = new BlyssLib(JSON.stringify(b.metadata.pir_scheme), b.secretSeed);
+    const scheme = b.metadata.pir_scheme;
+    if (scheme.scheme && scheme.scheme === 'doublepir') {
+      b.scheme = 'doublepir';
+      b.dpLib = DoublePIRApiClient.initialize_client(JSON.stringify(scheme));
+    } else {
+      b.scheme = 'spiral';
+      b.lib = new BlyssLib(JSON.stringify(scheme), b.secretSeed);
+    }
     return b;
   }
 
@@ -192,6 +206,7 @@ export class Bucket {
 
   /** Gets info on all keys in this bucket. */
   async listKeys(): Promise<KeyInfo[]> {
+    this.ensureSpiral();
     return await this.api.listKeys(this.name);
   }
 
@@ -211,6 +226,8 @@ export class Bucket {
     keyValuePairs: { [key: string]: any },
     metadata?: { [key: string]: any }
   ) {
+    this.ensureSpiral();
+
     const data = [];
     for (const key in keyValuePairs) {
       if (Object.prototype.hasOwnProperty.call(keyValuePairs, key)) {
@@ -290,6 +307,8 @@ export class Bucket {
    * @param keys - The keys to _privately_ intersect the value of.
    */
   async privateIntersect(keys: string[]): Promise<any> {
+    this.ensureSpiral();
+
     if (keys.length < BLOOM_CUTOFF) {
       return (await this.performPrivateReads(keys)).map(x => x.data);
     }
@@ -316,6 +335,8 @@ export class Bucket {
    * @param keys - The keys to _privately_ intersect the value of.
    */
   async privateKeyIntersect(keys: string[]): Promise<string[]> {
+    this.ensureSpiral();
+
     const bloomFilter = await this.api.bloom(this.name);
     const matches = [];
     for (const key of keys) {
@@ -325,6 +346,24 @@ export class Bucket {
     }
 
     return matches;
+  }
+
+  /**
+   * Privately checks if the given key is in the checklist-enabled bucket.
+   * This method is only supported on special global buckets that are checklist-enabled.
+   * The `supportsChecklistInclusion()` method returns a boolean indicating support.
+   *
+   * @param key - The key to _privately_ check against the checklist.
+   */
+  async checkInclusion(key: string): Promise<boolean> {
+    this.ensureDoublePIR();
+
+    return await this.performDoublePIRRead(key);
+  }
+
+  /** Returns whether this bucket supports `checkInclusion()` */
+  supportsChecklistInclusion(): boolean {
+    return this.scheme === 'doublepir';
   }
 
   /**

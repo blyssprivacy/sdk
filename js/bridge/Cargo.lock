@@ -69,6 +69,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "doublepir-rs"
+version = "0.1.0"
+dependencies = [
+ "rand",
+ "rand_chacha",
+ "subtle",
+]
+
+[[package]]
 name = "futures"
 version = "0.1.31"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -225,9 +234,9 @@ checksum = "d193d69bae983fc11a79df82342761dfbf28a99fc8d203dca4c3c1b590948965"
 
 [[package]]
 name = "serde_json"
-version = "1.0.87"
+version = "1.0.91"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6ce777b7b150d76b9cf60d28b55f5847135a003f7d7350c6be7a773508ce7d45"
+checksum = "877c235533714907a8c2464236f5c4b2a17262ef1bd71f38f35ea592c8da6883"
 dependencies = [
  "itoa",
  "ryu",
@@ -261,7 +270,10 @@ dependencies = [
 name = "spiral-rs-js-bridge"
 version = "0.1.0"
 dependencies = [
+ "doublepir-rs",
  "futures",
+ "serde_json",
+ "sha2",
  "spiral-rs",
  "wasm-bindgen",
  "wasm-bindgen-test",

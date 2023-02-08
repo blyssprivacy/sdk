@@ -1,10 +1,11 @@
 use spiral_rs::client::*;
-use spiral_rs::key_value::*;
 use spiral_rs::params::Params;
 use spiral_rs::util::*;
 
 use std::convert::TryInto;
 use wasm_bindgen::prelude::*;
+
+pub mod doublepir_lib;
 
 #[wasm_bindgen]
 extern "C" {
@@ -75,10 +76,10 @@ pub fn decode_response(c: &mut ApiClient, data: Box<[u8]>) -> Box<[u8]> {
 
 #[wasm_bindgen]
 pub fn get_row(c: &mut ApiClient, key: &str) -> u32 {
-    row_from_key(c.client.params, key) as u32
+    spiral_rs::key_value::row_from_key(c.client.params, key) as u32
 }
 
 #[wasm_bindgen]
 pub fn extract_result(_c: &mut ApiClient, key: &str, result: &[u8]) -> Option<Vec<u8>> {
-    extract_result_impl(key, result).ok()
+    spiral_rs::key_value::extract_result_impl(key, result).ok()
 }
