@@ -73,7 +73,7 @@ impl DoublePirServer {
         println!("2");
         std::io::stdout().flush().unwrap();
 
-        if (load_server_state) {
+        if load_server_state {
             self.server_state = State::deserialize_iter(
                 &mut std::fs::read(server_state_fname).unwrap().into_iter(),
             );
