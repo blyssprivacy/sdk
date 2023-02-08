@@ -1,3 +1,3 @@
-Samir Menon
-David Wu
-Ian Goldberg
+- Samir Menon
+- David Wu
+- Ian Goldberg

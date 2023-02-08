@@ -1,6 +1,37 @@
-# Blyss SDK
+<h1 align="center">
+  <img height="75" src="docs/static/img/logotype-light.svg" alt="blyss">
+</h1>
+<p align="center">
+  <p align="center">Open-source SDK that lets you build apps using homomorphic encryption.</p>
+</p>
 
-The [Blyss SDK](https://blyss.dev) lets you use homomorphic encryption to make private retrievals from Blyss buckets.
+<h4 align="center">
+  <a href="https://docs.blyss.dev">Docs</a> &nbsp; | &nbsp;
+  <a href="https://blyss.dev">Website</a> &nbsp; | &nbsp;
+  <a href="mailto:founders@blyss.dev">Contact</a>
+</h4>
+
+<h4 align="center">
+  <a href="https://github.com/blyssprivacy/sdk/blob/main/LICENSE">
+    <img src="https://img.shields.io/npm/l/@blyss/sdk?color=blue" alt="The Blyss SDK is released under the MIT license." />
+  </a>
+  <a href="https://www.npmjs.com/package/@blyss/sdk">
+    <img src="https://img.shields.io/npm/v/@blyss/sdk?color=brightgreen" alt="Blyss SDK on NPM" />
+  </a>
+  <br/>
+  <a href="https://signal.group/#CjQKIAVLMoW2pGtd58Ha1tVGtXTv7Z01YV3aA1VmTtX0sj1mEhC07vIrWB7aq9KOw5f2GQsw">
+    <img src="https://img.shields.io/badge/chat%20on%20Signal--blue?style=social" alt="Chat on Signal" />
+  </a>
+  <a href="https://twitter.com/blyssdev">
+    <img src="https://img.shields.io/twitter/follow/blyssdev?label=%40blyssdev&style=social" alt="Blyss Twitter" />
+  </a>
+  <a href="https://twitter.com/blyssdev">
+    <img src="https://img.shields.io/github/stars/blyssprivacy/sdk?style=social" alt="Blyss GitHub stars" />
+  </a>
+</h4>
+
+
+The [Blyss SDK](https://blyss.dev) lets you use homomorphic encryption to make private retrievals from Blyss buckets. This can enable new privacy-preserving apps, like [private nameserver resolution](https://sprl.it/), [private wallets](https://btc.blyss.dev/), and even [private Wikipedia](https://spiralwiki.com/).
 
 Get an API key by [signing up](https://blyss.dev/auth/sign-up). Detailed documentation is at [docs.blyss.dev](https://docs.blyss.dev).
 
