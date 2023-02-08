@@ -1,4 +1,4 @@
-import { Client } from '@blyss/client-sdk';
+import { Client } from '@blyss/sdk';
 
 async function main() {
   const client = new Client('<YOUR API KEY HERE>');
