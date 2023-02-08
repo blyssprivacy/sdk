@@ -1,3 +1,5 @@
+use std::{future::Future, slice};
+
 use rand::{
     distributions::{Standard, Uniform},
     Rng, SeedableRng,
@@ -6,7 +8,7 @@ use rand_chacha::ChaCha20Rng;
 
 use crate::{debug, util::*};
 
-use super::gauss_sample;
+use super::{derive_with_aes, gauss_sample};
 
 pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
 
@@ -62,7 +64,7 @@ impl Matrix {
     /// Construct a new Matrix filled with uniformly random data.
     pub fn random(rows: usize, cols: usize) -> Self {
         if DETERMINISTIC {
-            return Self::derive_from_seed(rows, cols, SEED_ZERO);
+            return Self::derive_from_seed(rows, cols, SEED_ZERO_SHORT);
         }
 
         let mut rng = rand::thread_rng();
@@ -77,7 +79,7 @@ impl Matrix {
     /// Faster than computing a random matrix and then computing the modulo.
     pub fn random_mod(rows: usize, cols: usize, modulus: u32) -> Self {
         if DETERMINISTIC {
-            return Self::derive_from_seed(rows, cols, SEED_ZERO) % modulus;
+            return Self::derive_from_seed(rows, cols, SEED_ZERO_SHORT) % modulus;
         }
 
         let mut rng = rand::thread_rng();
@@ -120,17 +122,38 @@ impl Matrix {
     ///
     /// This should only be used to construct public, pseudorandom
     /// data, not anything private (like secret keys or queries).
-    pub fn derive_from_seed(rows: usize, cols: usize, mut seed: Seed) -> Self {
-        if DETERMINISTIC {
-            seed = SEED_ZERO;
-        }
+    pub fn derive_from_seed(rows: usize, cols: usize, seed: [u8; 16]) -> Self {
+        let mut data = vec![0u32; rows * cols];
+        let data_u8 = unsafe {
+            let ptr = data.as_mut_ptr() as *mut u8;
+            let slice: &mut [u8] = slice::from_raw_parts_mut(ptr, data.len() * 4);
+            slice
+        };
+        derive_with_aes(seed, data_u8);
 
-        let mut rng = ChaCha20Rng::from_seed(seed);
-        Matrix {
-            rows,
-            cols,
-            data: (0..rows * cols).map(|_| rng.sample(Standard)).collect(),
-        }
+        Matrix { rows, cols, data }
+    }
+
+    pub async fn derive_from_fn_seed<T, Fut>(
+        rows: usize,
+        cols: usize,
+        seed: [u8; 16],
+        derive: fn(&[u8; 16], u64, &mut [u8]) -> Fut,
+    ) -> Self
+    where
+        Fut: Future<Output = T>,
+        T: Sized,
+    {
+        let mut data = vec![0u32; rows * cols];
+        let data_u8 = unsafe {
+            let ptr = data.as_mut_ptr() as *mut u8;
+            let slice: &mut [u8] = slice::from_raw_parts_mut(ptr, data.len() * 4);
+            slice
+        };
+
+        derive(&seed, 0, data_u8).await;
+
+        Matrix { rows, cols, data }
     }
 
     /// Get the slice of the data that the matrix contains.

@@ -5,7 +5,7 @@ use doublepir_rs::pir::PirServer;
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let num_entries: usize = args[1].parse().unwrap();
+    let num_entries: u64 = args[1].parse().unwrap();
     let bits_per_entry: usize = args[2].parse().unwrap();
     let data_file_name: String = args[3].parse().unwrap();
     assert_eq!(bits_per_entry, 1);

@@ -16,7 +16,7 @@ use std::{
 };
 
 pub struct DoublePirServer {
-    num_entries: usize,
+    num_entries: u64,
     bits_per_entry: usize,
     params: Params,
     shared_state: State,
@@ -180,7 +180,7 @@ impl DoublePirServer {
 }
 
 impl PirServer for DoublePirServer {
-    fn new(num_entries: usize, bits_per_entry: usize) -> Self {
+    fn new(num_entries: u64, bits_per_entry: usize) -> Self {
         let bits_per_entry_u64 = bits_per_entry as u64;
         println!("picking");
         let params = pick_params(num_entries, bits_per_entry_u64, SEC_PARAM, LOGQ);

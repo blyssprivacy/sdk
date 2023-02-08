@@ -23,7 +23,7 @@ fn bits_from_byte(byte: u8) -> [u8; 8] {
 #[derive(Debug, PartialEq, Clone, Copy)]
 pub struct DbInfo {
     /// Number of DB entries.
-    pub num_entries: usize,
+    pub num_entries: u64,
     /// Number of bits per DB entry.
     pub bits_per_entry: u64,
 
@@ -55,7 +55,7 @@ impl DbInfo {
     ///
     /// Takes in the number of entries, and the number of bits per entry,
     /// in the database. Does not allocate or fill any underlying data.
-    pub fn new(num_entries: usize, bits_per_entry: u64, params: &Params) -> Self {
+    pub fn new(num_entries: u64, bits_per_entry: u64, params: &Params) -> Self {
         assert!(num_entries > 0);
         assert!(bits_per_entry > 0);
         assert!(
@@ -105,7 +105,7 @@ impl Db {
     ///
     /// Takes in the number of entries, and the number of bits per entry,
     /// in the database. Does not allocate or fill any underlying data.
-    pub fn new(num_entries: usize, bits_per_entry: u64, params: &Params) -> Self {
+    pub fn new(num_entries: u64, bits_per_entry: u64, params: &Params) -> Self {
         let info = DbInfo::new(num_entries, bits_per_entry, params);
         let dummy = Matrix::new(0, 0);
         Db {
@@ -154,7 +154,7 @@ impl Db {
     }
 
     /// Creates a new database, filled with random data.
-    pub fn random(num_entries: usize, bits_per_entry: u64, params: &Params) -> Self {
+    pub fn random(num_entries: u64, bits_per_entry: u64, params: &Params) -> Self {
         let mut db = Self::new(num_entries, bits_per_entry, params);
         db.data = Matrix::random_mod(params.l, params.m, params.p as u32);
         db
@@ -251,7 +251,7 @@ impl Db {
     /// The iterator `data` should yield at least `num_entries` items, each a
     /// value of at most `bits_per_entry` bits.
     pub fn with_data<I: Iterator<Item = u8>>(
-        num_entries: usize,
+        num_entries: u64,
         bits_per_entry: u64,
         params: &Params,
         data: I,
@@ -284,7 +284,7 @@ impl Db {
             .unsquish(&self.info.squish_params, self.info.orig_cols);
     }
 
-    pub fn reconstruct_elem(mut vals: Vec<u64>, index: usize, info: &DbInfo) -> u64 {
+    pub fn reconstruct_elem(mut vals: Vec<u64>, index: u64, info: &DbInfo) -> u64 {
         let q = 1 << info.logq;
 
         for i in 0..vals.len() {
@@ -297,14 +297,14 @@ impl Db {
         println!("val {}", val);
 
         if info.packing > 0 {
-            val = base_p(1 << info.bits_per_entry, val, (index % info.packing) as u64);
+            val = base_p(1 << info.bits_per_entry, val, index % (info.packing as u64));
         }
 
         return val;
     }
 
     pub fn get_elem(&self, i: usize) -> u64 {
-        assert!(i < self.info.num_entries);
+        assert!(i < self.info.num_entries as usize);
 
         let mut col = i % self.data.cols;
         let mut row = i / self.data.cols;
@@ -343,7 +343,7 @@ impl Db {
             vals.push(val)
         }
 
-        let result = Self::reconstruct_elem(vals, i, &self.info);
+        let result = Self::reconstruct_elem(vals, i as u64, &self.info);
         result
     }
 }
@@ -356,7 +356,7 @@ fn compute_num_entries_base_p(p: u64, log_q: u64) -> usize {
 
 /// Returns how many Z_p elements are needed to represent a database of `num_entries` entries,
 /// each consisting of `bits_per_entry` bits.
-fn num_db_entries(num_entries: usize, bits_per_entry: u64, p: u64) -> (usize, usize, usize) {
+fn num_db_entries(num_entries: u64, bits_per_entry: u64, p: u64) -> (usize, usize, usize) {
     if (bits_per_entry as f64) <= (p as f64).log2() {
         // pack multiple DB entries into a single Z_p elem
         let logp = (p as f64).log2() as u64;
@@ -368,13 +368,13 @@ fn num_db_entries(num_entries: usize, bits_per_entry: u64, p: u64) -> (usize, us
 
     // use multiple Z_p elems to represent a single DB entry
     let ne = compute_num_entries_base_p(p, bits_per_entry);
-    return (num_entries * ne, ne, 0);
+    return (num_entries as usize * ne, ne, 0);
 }
 
 /// Find smallest l, m such that l*m >= num_entries*ne and ne divides l, where ne is
 /// the number of Z_p elements per DB entry determined by bits_per_entry and p.
 pub fn approx_square_database_dims(
-    num_entries: usize,
+    num_entries: u64,
     bits_per_entry: u64,
     p: u64,
 ) -> (usize, usize) {
@@ -395,7 +395,7 @@ pub fn approx_square_database_dims(
 /// the number of Z_p elements per DB entry determined by bits_per_entry and p,
 /// and m >= lower_bound_m.
 pub fn approx_database_dims(
-    num_entries: usize,
+    num_entries: u64,
     bits_per_entry: u64,
     p: u64,
     lower_bound_m: usize,

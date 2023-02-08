@@ -1,5 +1,4 @@
 use base64::{engine::general_purpose, Engine};
-use miniz_oxide::deflate::compress_to_vec;
 use std::{
     borrow::Cow,
     collections::HashMap,
@@ -9,11 +8,10 @@ use std::{
 };
 
 use doublepir_rs::{doublepir::*, serializer::Serialize};
-use rand::{distributions::Standard, thread_rng, Rng};
 use reqwest::blocking::multipart;
 use sha1::{Digest, Sha1};
 
-fn top_be_bits(data: &[u8], bits: usize) -> usize {
+fn top_be_bits(data: &[u8], bits: usize) -> u64 {
     let mut idx = 0;
     for i in 0..bits {
         let cond = data[i / 8] & (1 << (7 - (i % 8)));
@@ -24,7 +22,7 @@ fn top_be_bits(data: &[u8], bits: usize) -> usize {
     idx
 }
 
-fn get_bloom_indices(val: &str, k: usize, log2m: usize) -> Vec<usize> {
+fn get_bloom_indices(val: &str, k: usize, log2m: usize) -> Vec<u64> {
     let mut out = Vec::new();
     for k_i in 0..k {
         let val_to_hash = format!("{}", k_i) + val;
@@ -49,7 +47,7 @@ fn bytes_to_hex_upper(data: &[u8]) -> String {
     s
 }
 
-fn get_password_bloom_indices(password: &str, k: usize, log2m: usize) -> Vec<usize> {
+fn get_password_bloom_indices(password: &str, k: usize, log2m: usize) -> Vec<u64> {
     let hash = Sha1::digest(password);
     let key_str = bytes_to_hex_upper(&hash);
 
@@ -96,7 +94,7 @@ fn post_data_to_server(data: Vec<u8>, server_url: &str) -> Vec<u8> {
 
 fn main() {
     let args: Vec<String> = env::args().collect();
-    let num_entries: usize = args[1].parse().unwrap();
+    let num_entries: u64 = args[1].parse().unwrap();
     let bits_per_entry: u64 = args[2].parse().unwrap();
     let data_file_name: String = args[3].parse().unwrap();
     let server_url: String = args[4].parse().unwrap();

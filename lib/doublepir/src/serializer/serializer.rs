@@ -142,7 +142,7 @@ impl Serialize for DbInfo {
 
 impl<'a, I: Iterator<Item = u8>> Deserialize<'a, I> for DbInfo {
     fn deserialize_iter(iter: &mut I) -> Self {
-        let num_entries = usize::from_be_bytes(iter.take_n());
+        let num_entries = u64::from_be_bytes(iter.take_n());
         let bits_per_entry = u64::from_be_bytes(iter.take_n());
         let packing = usize::from_be_bytes(iter.take_n());
         let ne = usize::from_be_bytes(iter.take_n());

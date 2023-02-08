@@ -1,4 +1,5 @@
 mod contract;
+mod derivation;
 mod gaussian;
 mod indexing;
 mod kernels;
@@ -8,6 +9,7 @@ mod squish;
 mod transpose;
 
 pub use contract::*;
+pub use derivation::*;
 pub use gaussian::*;
 pub use indexing::*;
 pub use kernels::*;

@@ -1,4 +1,4 @@
-use std::time::Instant;
+use std::{future::Future, time::Instant};
 
 use crate::{database::*, info, matrix::*, params::Params, serializer::State, util::*};
 
@@ -14,7 +14,7 @@ pub const SEC_PARAM: usize = 1usize << 10;
 /// Maximum considered plaintext modulus
 const MAX_SEARCH_P: u64 = 1 << 20;
 
-pub fn pick_params(num_entries: usize, d: u64, n: usize, logq: u64) -> Params {
+pub fn pick_params(num_entries: u64, d: u64, n: usize, logq: u64) -> Params {
     let mut good_p = Params::zero();
     let mut found = false;
 
@@ -44,8 +44,30 @@ pub fn pick_params(num_entries: usize, d: u64, n: usize, logq: u64) -> Params {
 
 /// Returns shared_state
 pub fn init(info: &DbInfo, params: &Params) -> State {
-    let a_1 = Matrix::derive_from_seed(params.m, params.n, SEEDS[0]);
-    let a_2 = Matrix::derive_from_seed(params.l / (info.x as usize), params.n, SEEDS[1]);
+    let a_1 = Matrix::derive_from_seed(params.m, params.n, SEEDS_SHORT[0]);
+    let a_2 = Matrix::derive_from_seed(params.l / (info.x as usize), params.n, SEEDS_SHORT[1]);
+
+    vec![a_1, a_2]
+}
+
+/// Returns shared_state
+pub async fn init_derive_fast<T, Fut>(
+    info: &DbInfo,
+    params: &Params,
+    derive: fn(&[u8; 16], u64, &mut [u8]) -> Fut,
+) -> State
+where
+    Fut: Future<Output = T>,
+    T: Sized,
+{
+    let a_1 = Matrix::derive_from_fn_seed(params.m, params.n, SEEDS_SHORT[0], derive).await;
+    let a_2 = Matrix::derive_from_fn_seed(
+        params.l / (info.x as usize),
+        params.n,
+        SEEDS_SHORT[1],
+        derive,
+    )
+    .await;
 
     vec![a_1, a_2]
 }
@@ -86,23 +108,23 @@ pub fn setup(db: &mut Db, shared: &State, params: &Params) -> (State, State) {
 }
 
 /// Returns (client_state, query)
-pub fn query(i: usize, shared: &State, params: &Params, info: &DbInfo) -> (State, State) {
+pub fn query(i: u64, shared: &State, params: &Params, info: &DbInfo) -> (State, State) {
     let mut idx_to_query = i;
     if info.packing > 0 {
-        idx_to_query = idx_to_query / info.packing;
+        idx_to_query = idx_to_query / (info.packing as u64);
     }
-    let i1 = (idx_to_query / params.m) * (info.ne / info.x) as usize;
-    let i2 = idx_to_query % params.m;
+    let i1 = ((idx_to_query / (params.m as u64)) * (info.ne / info.x) as u64) as usize;
+    let i2 = (idx_to_query % (params.m as u64)) as usize;
 
     println!("{} -> {},{}", i, i1, i2);
 
-    let a_1 = shared[0].clone();
+    let a_1 = &shared[0];
     a_1.print_dims("a_1");
-    let a_2 = shared[1].clone();
+    let a_2 = &shared[1];
 
     let secret1 = Matrix::random_logmod(params.n, 1, params.logq as u32);
     let err1 = Matrix::gaussian(params.m, 1);
-    let mut query1 = &a_1 * &secret1;
+    let mut query1 = a_1 * &secret1;
     query1 += err1;
     query1.data[i2] += params.ext_delta() as u32;
 
@@ -123,7 +145,7 @@ pub fn query(i: usize, shared: &State, params: &Params, info: &DbInfo) -> (State
         let secret2 = Matrix::gaussian(params.n, 1);
         secret2.print_dims("secret2");
         let err2 = Matrix::gaussian(params.l / info.x as usize, 1);
-        let mut query2 = &a_2 * &secret2;
+        let mut query2 = a_2 * &secret2;
         query2 += err2;
         query2.print_dims("query2");
         query2.data[i1 + j as usize] += params.ext_delta() as u32;
@@ -249,7 +271,7 @@ pub fn answer(
 }
 
 pub fn recover(
-    i: usize,
+    i: u64,
     batch_index: usize,
     offline: &State,
     query: &State,
@@ -365,7 +387,6 @@ mod tests {
     use super::*;
 
     #[test]
-    #[ignore]
     fn simple_end_to_end_test() {
         let num_entries = 1 << 24;
         let bits_per_entry = 1;
@@ -379,15 +400,20 @@ mod tests {
         let corr_val = rng.gen::<u8>() % (item_max as u8);
         let vals_iter_fixed_point = FixedPointIter::new(vals_iter, index_to_query, corr_val);
 
-        let params = pick_params(num_entries, bits_per_entry, SEC_PARAM, LOGQ);
+        let params = pick_params(num_entries as u64, bits_per_entry, SEC_PARAM, LOGQ);
         println!("params: {:?}", params);
-        let mut db = Db::with_data(num_entries, bits_per_entry, &params, vals_iter_fixed_point);
+        let mut db = Db::with_data(
+            num_entries as u64,
+            bits_per_entry,
+            &params,
+            vals_iter_fixed_point,
+        );
         println!("info: {:?}", db.info);
         assert_eq!(db.get_elem(index_to_query) as u8, corr_val);
 
         let shared_state = init(&db.info, &params);
         let (server_state, hint) = setup(&mut db, &shared_state, &params);
-        let (client_state, query) = query(index_to_query, &shared_state, &params, &db.info);
+        let (client_state, query) = query(index_to_query as u64, &shared_state, &params, &db.info);
         let query_clone = query.clone();
         let start = Instant::now();
         let answer = answer(
@@ -401,7 +427,7 @@ mod tests {
         );
         println!("Answer took: {} us", start.elapsed().as_micros());
         let result = recover(
-            index_to_query,
+            index_to_query as u64,
             0,
             &hint,
             &query_clone,
@@ -418,7 +444,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn batched_end_to_end_test() {
         let num_entries = 1 << 24;
         let bits_per_entry = 1;
@@ -443,16 +468,21 @@ mod tests {
         let vals_iter_fixed_point =
             FixedPointIter::new(vals_iter_fixed_point, index_to_query_2, corr_val);
 
-        let params = pick_params(num_entries, bits_per_entry, SEC_PARAM, LOGQ);
+        let params = pick_params(num_entries as u64, bits_per_entry, SEC_PARAM, LOGQ);
         println!("params: {:?}", params);
-        let mut db = Db::with_data(num_entries, bits_per_entry, &params, vals_iter_fixed_point);
+        let mut db = Db::with_data(
+            num_entries as u64,
+            bits_per_entry,
+            &params,
+            vals_iter_fixed_point,
+        );
 
         let shared_state = init(&db.info, &params);
         let (server_state, hint) = setup(&mut db, &shared_state, &params);
         let (client_state_1, query_val_1) =
-            query(index_to_query_1, &shared_state, &params, &db.info);
+            query(index_to_query_1 as u64, &shared_state, &params, &db.info);
         let (client_state_2, query_val_2) =
-            query(index_to_query_2, &shared_state, &params, &db.info);
+            query(index_to_query_2 as u64, &shared_state, &params, &db.info);
 
         println!("info: {:?}", db.info);
 
@@ -477,7 +507,7 @@ mod tests {
 
         for chunk_idx in 0..queries.len() {
             let result = recover(
-                indices_to_query[chunk_idx],
+                indices_to_query[chunk_idx] as u64,
                 chunk_idx,
                 &hint,
                 &queries[chunk_idx],
@@ -495,7 +525,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn chunked_end_to_end_test() {
         let num_entries = 1 << 24;
         let bits_per_entry = 1;
@@ -520,16 +549,21 @@ mod tests {
         let vals_iter_fixed_point =
             FixedPointIter::new(vals_iter_fixed_point, index_to_query_2, corr_val);
 
-        let params = pick_params(num_entries, bits_per_entry, SEC_PARAM, LOGQ);
+        let params = pick_params(num_entries as u64, bits_per_entry, SEC_PARAM, LOGQ);
         println!("params: {:?}", params);
-        let mut db = Db::with_data(num_entries, bits_per_entry, &params, vals_iter_fixed_point);
+        let mut db = Db::with_data(
+            num_entries as u64,
+            bits_per_entry,
+            &params,
+            vals_iter_fixed_point,
+        );
 
         let shared_state = init(&db.info, &params);
         let (server_state, hint) = setup(&mut db, &shared_state, &params);
         let (client_state_1, query_val_1) =
-            query(index_to_query_1, &shared_state, &params, &db.info);
+            query(index_to_query_1 as u64, &shared_state, &params, &db.info);
         let (client_state_2, query_val_2) =
-            query(index_to_query_2, &shared_state, &params, &db.info);
+            query(index_to_query_2 as u64, &shared_state, &params, &db.info);
 
         println!("info: {:?}", db.info);
 
@@ -584,7 +618,7 @@ mod tests {
 
         for chunk_idx in 0..num_chunks {
             let result = recover(
-                indices_to_query[chunk_idx],
+                indices_to_query[chunk_idx] as u64,
                 chunk_idx,
                 &hint,
                 &queries[chunk_idx],

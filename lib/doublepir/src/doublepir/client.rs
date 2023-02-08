@@ -9,10 +9,10 @@ use crate::{
 
 use crate::doublepir;
 
-use std::fmt::Debug;
+use std::{fmt::Debug, future::Future};
 
 pub struct DoublePirClient {
-    num_entries: usize,
+    num_entries: u64,
     bits_per_entry: usize,
     params: Params,
     shared_state: State,
@@ -21,7 +21,7 @@ pub struct DoublePirClient {
 }
 
 impl PirClient for DoublePirClient {
-    fn new(num_entries: usize, bits_per_entry: usize) -> Self {
+    fn new(num_entries: u64, bits_per_entry: usize) -> Self {
         let bits_per_entry_u64 = bits_per_entry as u64;
         let params = doublepir::pick_params(
             num_entries,
@@ -46,7 +46,7 @@ impl PirClient for DoublePirClient {
         self.hint = State::deserialize(hint);
     }
 
-    fn generate_query(&self, index: usize) -> (Vec<u8>, Vec<u8>) {
+    fn generate_query(&self, index: u64) -> (Vec<u8>, Vec<u8>) {
         let (client_state, query_data) =
             doublepir::query(index, &self.shared_state, &self.params, &self.db_info);
 
@@ -56,7 +56,7 @@ impl PirClient for DoublePirClient {
         )
     }
 
-    fn decode_response(&self, response: &[u8], index: usize, client_query_data: &[u8]) -> Vec<u8> {
+    fn decode_response(&self, response: &[u8], index: u64, client_query_data: &[u8]) -> Vec<u8> {
         let answer = State::deserialize(response);
         let query_state = Vec::<State>::deserialize(client_query_data);
         let (client_state, query) = (&query_state[0], &query_state[1]);
@@ -89,6 +89,27 @@ impl DoublePirClient {
         }
     }
 
+    pub async fn with_params_derive_fast<T, Fut>(
+        params: &Params,
+        db_info: &DbInfo,
+        derive: fn(&[u8; 16], u64, &mut [u8]) -> Fut,
+    ) -> Self
+    where
+        Fut: Future<Output = T>,
+        T: Sized,
+    {
+        let shared_state = doublepir::init_derive_fast(db_info, params, derive).await;
+        let hint = State::new();
+        Self {
+            num_entries: db_info.num_entries,
+            bits_per_entry: db_info.bits_per_entry as usize,
+            params: *params,
+            shared_state,
+            db_info: *db_info,
+            hint,
+        }
+    }
+
     pub fn load_hint_from_file(&mut self, hint_file_name: &str) {
         self.hint = State::deserialize(&std::fs::read(hint_file_name).unwrap());
     }
@@ -102,7 +123,7 @@ impl DoublePirClient {
         DbInfo::deserialize(&std::fs::read(dbinfo_file_name).unwrap())
     }
 
-    pub fn num_entries(&self) -> usize {
+    pub fn num_entries(&self) -> u64 {
         self.num_entries
     }
 
@@ -117,7 +138,7 @@ impl DoublePirClient {
     pub fn decode_response_impl(
         &self,
         response: &[u8],
-        index: usize,
+        index: u64,
         query_index: usize,
         client_query_data: &[u8],
     ) -> Vec<u8> {
@@ -141,8 +162,8 @@ impl DoublePirClient {
 
     pub fn generate_query_batch(
         &self,
-        indices: &[usize],
-    ) -> (Vec<State>, Vec<Vec<u8>>, Vec<Option<(usize, usize)>>) {
+        indices: &[u64],
+    ) -> (Vec<State>, Vec<Vec<u8>>, Vec<Option<(u64, u64)>>) {
         let params = self.params_ref();
         let dbinfo = self.dbinfo_ref();
 
@@ -152,32 +173,32 @@ impl DoublePirClient {
         let mut query_plan = vec![None; batch_num];
 
         for (query_idx, i) in indices.iter().enumerate() {
-            let db_elem = *i / dbinfo.packing;
-            let row = db_elem / params.m;
-            let batch = row / batch_sz;
+            let db_elem = *i / (dbinfo.packing as u64);
+            let row = db_elem / (params.m as u64);
+            let batch = row / (batch_sz as u64);
             let idx_within_batch = *i;
 
             println!("gave {} batch {} (row = {})", idx_within_batch, batch, row);
 
             // assert_eq!((*i) % 2, idx_within_batch % 2);
 
-            let cur_val = query_plan[batch];
+            let cur_val = query_plan[batch as usize];
             if cur_val.is_some() {
                 println!("can't query #{} (batch {} already taken)", query_idx, batch);
             } else {
-                query_plan[batch] = Some((*i, idx_within_batch));
+                query_plan[batch as usize] = Some((*i, idx_within_batch));
             }
         }
 
         // replace any None's in batch_plan with a random index
         let mut rng = thread_rng();
-        let mut target_indices = Vec::<usize>::new();
+        let mut target_indices = Vec::<u64>::new();
         for (i, query) in query_plan.iter().enumerate() {
             if let Some((_, target_idx)) = query {
                 target_indices.push(*target_idx);
             } else {
-                let rand_idx = rng.gen::<usize>() % batch_sz_words;
-                let rand_target_idx = batch_sz_words * i + rand_idx;
+                let rand_idx = rng.gen::<u64>() % (batch_sz_words as u64);
+                let rand_target_idx = (batch_sz_words as u64) * (i as u64) + rand_idx;
                 target_indices.push(rand_target_idx);
             }
         }
