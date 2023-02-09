@@ -19,6 +19,7 @@ serde_json = "1.0.92"
 ctr = "0.9.2"
 aes = "0.8.2"
 crypto = { version = "0.4.0", features = ["cipher"] }
+rand_distr = "0.4.3"
 
 [[bin]]
 name = "e2e"

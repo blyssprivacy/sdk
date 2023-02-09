@@ -63,6 +63,9 @@ export class Bucket {
   /** The public UUID of this client's public parameters. */
   uuid?: string;
 
+  /** The cached hint downloaded from a checklist-enabled bucket. */
+  hint?: Uint8Array;
+
   /**
    * The maximum size of query batches sent to the service. Must be greater than
    * 0.
@@ -103,6 +106,18 @@ export class Bucket {
   private async getRawResponse(queryData: Uint8Array): Promise<Uint8Array> {
     const queryResult = base64ToBytes(
       new TextDecoder().decode(await this.api.privateRead(this.name, queryData))
+    );
+    return queryResult;
+  }
+
+  private async getRawResponseMultipart(
+    queryData: Uint8Array
+  ): Promise<Uint8Array> {
+    const targetUrl = this.metadata['target_url'];
+    const queryResult = base64ToBytes(
+      new TextDecoder().decode(
+        await this.api.privateReadMultipart(this.name, queryData, targetUrl)
+      )
     );
     return queryResult;
   }
@@ -148,19 +163,48 @@ export class Bucket {
   }
 
   private async getHint(): Promise<Uint8Array> {
-    return this.api.hint(this.name);
+    if (!this.hint) {
+      this.hint = await this.api.hint(this.name);
+    }
+    return this.hint;
   }
 
   private async performDoublePIRRead(key: string): Promise<boolean> {
     const idx = this.dpLib.get_row(key);
     const hintPromise = this.getHint();
     const query = this.dpLib.generate_query(idx);
+    const queryResult = this.getRawResponse(query);
     this.dpLib.load_hint(await hintPromise);
-
-    const queryResult = await this.getRawResponse(query);
-    const decryptedResult = this.dpLib.decode_response(queryResult);
+    const decryptedResult = this.dpLib.decode_response(await queryResult);
     const extractedResult = this.dpLib.extract_result(decryptedResult);
     return extractedResult;
+  }
+
+  private async performDoublePIRReadBatch(key: string): Promise<boolean> {
+    const indices = this.dpLib.get_bloom_indices(key, 8, 36);
+
+    console.log('getting hint + send query');
+    const hint = this.getHint();
+    console.time('querygen');
+    const query = this.dpLib.generate_query_batch(indices);
+    console.timeEnd('querygen');
+    const queryResult = this.getRawResponseMultipart(query);
+    this.dpLib.load_hint(await hint);
+    const decryptedResult = this.dpLib.decode_response_batch(await queryResult);
+    console.log('decrypted');
+    console.log('got:', decryptedResult);
+
+    let count = 0;
+    for (let i = 0; i < decryptedResult.length; i++) {
+      const bit = decryptedResult[i];
+      if (bit == 1) {
+        count += 1;
+      } else if (bit == 0) {
+        return false;
+      }
+    }
+
+    return count >= 5;
   }
 
   private ensureSpiral() {
@@ -191,9 +235,16 @@ export class Bucket {
     const b = new this(api, name, secretSeed);
     b.metadata = await b.api.meta(b.name);
     const scheme = b.metadata.pir_scheme;
-    if (scheme.scheme && scheme.scheme === 'doublepir') {
+    console.log('got scheme:', scheme['scheme']);
+    if (scheme['scheme'] && scheme['scheme'] === 'doublepir') {
+      scheme['num_entries'] = '' + scheme['num_entries'];
       b.scheme = 'doublepir';
-      b.dpLib = DoublePIRApiClient.initialize_client(JSON.stringify(scheme));
+
+      console.time('init');
+      b.dpLib = await DoublePIRApiClient.initialize_client(
+        JSON.stringify(scheme)
+      );
+      console.timeEnd('init');
     } else {
       b.scheme = 'spiral';
       b.lib = new BlyssLib(JSON.stringify(scheme), b.secretSeed);
@@ -392,7 +443,7 @@ export class Bucket {
   async checkInclusion(key: string): Promise<boolean> {
     this.ensureDoublePIR();
 
-    return await this.performDoublePIRRead(key);
+    return await this.performDoublePIRReadBatch(key);
   }
 
   /** Returns whether this bucket supports `checkInclusion()` */
