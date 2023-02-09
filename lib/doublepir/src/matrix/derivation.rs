@@ -1,13 +1,13 @@
 use super::Seed;
 use aes::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
 
-type Aes128Ctr64LE = ctr::Ctr64LE<aes::Aes128>;
+type Aes128Ctr64BE = ctr::Ctr64BE<aes::Aes128>;
 
 pub fn derive_with_aes(key: [u8; 16], out: &mut [u8]) {
     for (i, chunk) in out.chunks_mut(65536).enumerate() {
         let mut iv = [0u8; 16];
         (&mut iv[0..8]).copy_from_slice(&(i as u64).to_be_bytes());
-        let mut cipher = Aes128Ctr64LE::new(&key.into(), &iv.into());
+        let mut cipher = Aes128Ctr64BE::new(&key.into(), &iv.into());
         cipher.apply_keystream(chunk);
     }
 }
@@ -26,7 +26,15 @@ mod tests {
         println!("{:?}", &data[0..32]);
         println!("{:?}", &data[258 * 65536..258 * 65536 + 32]);
         assert_eq!(data[0], 247);
+        assert_eq!(data[16], 196);
         assert_eq!(data[258 * 65536], 63);
+
+        let mut data = vec![0u8; 265 * 65536];
+        derive_with_aes(SEEDS_SHORT[1], &mut data);
+        println!("{:?}", &data[0..32]);
+        println!("{:?}", &data[258 * 65536..258 * 65536 + 32]);
+        assert_eq!(data[0], 132);
+        assert_eq!(data[258 * 65536], 254);
     }
 }
 // #[cfg(feature = "web-sys")]
@@ -49,7 +57,7 @@ mod tests {
 //     //     counter,
 //     //     length: 64,
 //     //   }
-//     // let mut cipher = Aes128Ctr64LE::new(&key.into(), &iv.into());
+//     // let mut cipher = Aes128Ctr64BE::new(&key.into(), &iv.into());
 
 //     let window = web_sys::window().unwrap();
 //     let func = window.get("deriveSeed").unwrap().;
