@@ -1,5 +1,4 @@
-use super::Seed;
-use aes::cipher::{KeyIvInit, StreamCipher, StreamCipherSeek};
+use aes::cipher::{KeyIvInit, StreamCipher};
 
 type Aes128Ctr64BE = ctr::Ctr64BE<aes::Aes128>;
 

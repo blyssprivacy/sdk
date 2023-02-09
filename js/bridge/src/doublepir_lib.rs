@@ -1,19 +1,17 @@
 use doublepir_rs::{
     database::DbInfo,
     doublepir::*,
-    matrix::Matrix,
     matrix::SquishParams,
     params::Params,
     pir::PirClient,
     serializer::Serialize,
-    util::{SEEDS, SEEDS_SHORT},
+    util::SEEDS_SHORT,
 };
 use js_sys::Promise;
 use serde_json::{self, Value};
 use std::{
     convert::TryInto,
     fmt::Write,
-    time::{Duration, Instant},
 };
 use wasm_bindgen::prelude::*;
 
@@ -153,7 +151,7 @@ impl DoublePIRApiClient {
         }
     }
 
-    pub fn generate_query(&mut self, idx_target: u64) -> Box<[u8]> {
+    pub fn generate_query(&mut self, _idx_target: u64) -> Box<[u8]> {
         Vec::new().into_boxed_slice()
     }
 
