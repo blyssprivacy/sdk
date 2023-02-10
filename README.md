@@ -2,7 +2,7 @@
   <img height="75" src="docs/static/img/logotype-light.svg" alt="blyss">
 </h1>
 <p align="center">
-  <p align="center">Open-source SDK that lets you build apps using homomorphic encryption.</p>
+  <p align="center">Open-source SDK for accessing data privately using homomorphic encryption.</p>
 </p>
 
 <h4 align="center">
@@ -25,7 +25,7 @@
   <a href="https://twitter.com/blyssdev">
     <img src="https://img.shields.io/twitter/follow/blyssdev?label=%40blyssdev&style=social" alt="Blyss Twitter" />
   </a>
-  <a href="https://twitter.com/blyssdev">
+  <a href="https://github.com/blyssprivacy/sdk">
     <img src="https://img.shields.io/github/stars/blyssprivacy/sdk?style=social" alt="Blyss GitHub stars" />
   </a>
 </h4>
@@ -33,7 +33,7 @@
 
 The [Blyss SDK](https://blyss.dev) lets you use homomorphic encryption to make private retrievals from Blyss buckets. This can enable new privacy-preserving apps, like [private nameserver resolution](https://sprl.it/), [private wallets](https://btc.blyss.dev/), and even [private Wikipedia](https://spiralwiki.com/).
 
-Get an API key by [signing up](https://blyss.dev/auth/sign-up). Detailed documentation is at [docs.blyss.dev](https://docs.blyss.dev).
+Get an API key by [signing up](https://blyss.dev). Detailed documentation is at [docs.blyss.dev](https://docs.blyss.dev).
 
 > **Warning**
 > The SDK has not yet been audited or reviewed, and the public Blyss service is still in beta. Data stored in Blyss should not be considered durable. [Contact us](mailto:founders@blyss.dev) for access to a production-ready service.
@@ -45,7 +45,7 @@ Get an API key by [signing up](https://blyss.dev/auth/sign-up). Detailed documen
 
 You can quickly try using the SDK without downloading anything. The example code shows how to use Blyss buckets to perform private contact intersection.
 
-1. Get an API key by [signing up](https://blyss.dev/auth/sign-up).
+1. Get an API key by [signing up](https://blyss.dev).
 2. Open [this CodeSandbox](https://codesandbox.io/s/blyss-contact-intersection-example-7qr6r5) and enter your API key where it says `<YOUR API KEY HERE>`. This lets you try using the SDK in your browser.
 3. Try adding users to the service using the "Add a user" button. As you add more users, the service will _privately_ intersect each new users's contacts and the already existing users.
    Every user's list of contacts stays completely private using homomorphic encryption: it never leaves their device unencrypted.
@@ -54,7 +54,7 @@ If you prefer a simpler example using vanilla JS, check out [this CodePen](https
 
 ## Examples
 
-The `examples/` directory has several examples of how to use the Blyss SDK. Running the examples requires [an API key](https://blyss.dev/auth/sign-up).
+The `examples/` directory has several examples of how to use the Blyss SDK. Running the examples requires [an API key](https://blyss.dev).
 
 ### Browser
 
