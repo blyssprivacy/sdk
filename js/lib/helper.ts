@@ -13,7 +13,10 @@ import initWasm, {
 import wasmData from '../../dist/lib/lib_bg.wasm';
 
 (async function () {
-  (window as any).wasmInit = await initWasm(wasmData);
+  const result = await initWasm(wasmData);
+  if (typeof window !== 'undefined') {
+    (window as any).wasmInit = result;
+  }
 })();
 
 const key1 = new Uint8Array([
@@ -84,7 +87,16 @@ async function aes_derive_fast(
   // console.log('yay');
 }
 
-(window as any).aes_derive_fast_1 = async function (
+let windowObj: any;
+if (typeof window !== 'undefined') {
+  // none
+  windowObj = window;
+} else {
+  (global.window as any) = {};
+  windowObj = global.window;
+}
+
+windowObj.aes_derive_fast_1 = async function (
   ctr: bigint,
   dst: number,
   len: number
@@ -92,7 +104,7 @@ async function aes_derive_fast(
   return await aes_derive_fast(1, ctr, dst, len);
 };
 
-(window as any).aes_derive_fast_2 = async function (
+windowObj.aes_derive_fast_2 = async function (
   ctr: bigint,
   dst: number,
   len: number
