@@ -95,11 +95,6 @@
 }
 .theme-admonition > div:first-child {
   display: none;
-  /* margin-bottom: 0.8rem;
-  text-transform: uppercase;
-  font-weight: 800;
-  letter-spacing: 0.05em;
-  font-size: 0.9em; */
 }
 
 .navbar__link--active {
@@ -147,7 +142,6 @@ nav.theme-doc-breadcrumbs {
   margin-bottom: 64px;
 }
 
-/* For readability concerns, you should choose a lighter palette in dark mode. */
 [data-theme='dark'] {
   --ifm-color-primary: #eb8d9f;
   --ifm-color-primary-dark: #e56d84;
@@ -189,14 +183,16 @@ nav.theme-doc-breadcrumbs {
   font-weight: 600;
   font-size: 24px;
   letter-spacing: -0.04em;
-  color: #F68E9D;
+  /* color: #F68E9D; */
+  color: #fff;
   margin-right: 0.4rem;
 }
 
 .main-wrapper {
   position: relative;
   z-index: 1;
-  background-color: #FFFFFF;
+  /* background-color: #FFFFFF; */
+  background-color: #1b1b1d;
   box-shadow: 0px 40px 40px -40px rgba(0, 0, 0, 0.08);
 }
 
@@ -235,7 +231,7 @@ main {
 }
 
 .footer {
-  background-color: #dee2e6;
+  background-color: #242526;
   min-height: 250px;
   --ifm-footer-color: #5c5f66;
 }
@@ -282,6 +278,7 @@ footer.footer > .container {
   margin-bottom: 16px;
 }
 
+.footer-tagline,
 .footer-copyright {
   color: #A6A7AB;
 }
