@@ -68,7 +68,7 @@
 .table-of-contents:before {
   content: "On This Page";
   text-transform: uppercase;
-  color: #000;
+  color: #eee;
   font-weight: 800;
   margin: 0 var(--ifm-toc-padding-horizontal) 0.5rem var(--ifm-toc-padding-horizontal);
   display: inline-block;
