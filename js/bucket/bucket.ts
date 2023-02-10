@@ -113,7 +113,7 @@ export class Bucket {
   private async getRawResponseMultipart(
     queryData: Uint8Array
   ): Promise<Uint8Array> {
-    const targetUrl = this.metadata['url'];
+    const targetUrl = this.metadata['pir_scheme']['url'];
     const queryResult = base64ToBytes(
       new TextDecoder().decode(
         await this.api.privateReadMultipart(this.name, queryData, targetUrl)
