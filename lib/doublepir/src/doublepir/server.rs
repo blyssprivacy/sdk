@@ -23,6 +23,7 @@ pub struct DoublePirServer {
     db: Db,
     pub server_state: State,
     hint: State,
+    pub adjustments: Vec<u32>,
 }
 
 impl DoublePirServer {
@@ -177,6 +178,24 @@ impl DoublePirServer {
         println!("response of len: {}", response.len());
         response.serialize()
     }
+
+    pub fn generate_adjustments(params: &Params, shared_state: &State) -> Vec<u32> {
+        let mut out = Vec::new();
+        let ratio = params.p / 2;
+        let a_2 = &shared_state[1];
+        for j1 in 0..params.n {
+            let mut val3 = 0u64;
+            for j2 in 0..a_2.rows {
+                val3 += ratio * (a_2[j2][j1] as u64);
+            }
+            val3 %= 1 << params.logq;
+            val3 = (1 << params.logq) - val3;
+
+            let v = val3 as u32;
+            out.push(v);
+        }
+        out
+    }
 }
 
 impl PirServer for DoublePirServer {
@@ -189,6 +208,7 @@ impl PirServer for DoublePirServer {
         let shared_state = init(&db.info, &params);
         let server_state = Vec::new();
         let hint = Vec::new();
+        let adjustments = Self::generate_adjustments(&params, &shared_state);
         Self {
             num_entries,
             bits_per_entry,
@@ -197,6 +217,7 @@ impl PirServer for DoublePirServer {
             shared_state,
             server_state,
             hint,
+            adjustments,
         }
     }
 

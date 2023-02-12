@@ -163,6 +163,85 @@ pub fn query(i: u64, shared: &State, params: &Params, info: &DbInfo) -> (State, 
     (state, msg)
 }
 
+pub async fn query_multiple_fast<T, Fut>(
+    indices: &[u64],
+    derive_fn: fn(u32, u32, &mut [u8]) -> Fut,
+    params: &Params,
+    info: &DbInfo,
+) -> Vec<(State, State)>
+where
+    Fut: Future<Output = T>,
+    T: Sized,
+{
+    let num_queries = indices.len();
+
+    // Goal here is to never materialize the shared pseudorandom matrices A1 and A2
+    // Instead, efficiently generate them "on the fly" for this matmul
+    let secret1s = Matrix::random_logmod(params.n, num_queries, params.logq as u32);
+    let secret2s = Matrix::gaussian(params.n, num_queries);
+
+    // Each column is a "query base", formed by multiplying by the pseudorandom matrices A1 and A2
+    let query1_bases = matrix_mul_derive_fn(params.m, params.n, &secret1s, derive_fn, 1).await;
+    let query2_bases = matrix_mul_derive_fn(params.l, params.n, &secret2s, derive_fn, 2).await; // the params.l is on purpose
+
+    assert_eq!(query1_bases.rows, params.m);
+    assert_eq!(query1_bases.cols, num_queries);
+
+    let mut out = Vec::new();
+    for (query_idx, i) in indices.iter().enumerate() {
+        let mut idx_to_query = *i;
+        if info.packing > 0 {
+            idx_to_query = idx_to_query / (info.packing as u64);
+        }
+        let i1 = ((idx_to_query / (params.m as u64)) * (info.ne / info.x) as u64) as usize;
+        let i2 = (idx_to_query % (params.m as u64)) as usize;
+
+        println!("{} -> {},{}", i, i1, i2);
+
+        let secret1 = secret1s.column(query_idx); //Matrix::random_logmod(params.n, 1, params.logq as u32);
+        let err1 = Matrix::gaussian(params.m, 1);
+        let mut query1 = query1_bases.column(query_idx);
+        query1 += err1;
+        query1.data[i2] += params.ext_delta() as u32;
+
+        let squishing = info.squish_params.delta;
+        if params.m % squishing != 0 {
+            query1.append_zeros(squishing - (params.m % squishing))
+        }
+
+        query1.print_checksum("query1");
+
+        let mut state = vec![secret1];
+        let mut msg = vec![query1];
+
+        for j in 0..info.ne / info.x {
+            // let secret2 = Matrix::random_logmod(params.n, 1, params.logq as u32);
+
+            // Use error distribution secret instead of uniform
+            let secret2 = secret2s.column(query_idx); //Matrix::gaussian(params.n, 1);
+            secret2.print_dims("secret2");
+            let err2 = Matrix::gaussian(params.l / info.x as usize, 1);
+            let mut query2 = query2_bases.column(query_idx);
+            query2 += err2;
+            query2.print_dims("query2");
+            query2.data[i1 + j as usize] += params.ext_delta() as u32;
+
+            if (params.l / info.x as usize) % squishing != 0 {
+                query2.append_zeros(squishing - ((params.l / info.x as usize) % squishing));
+            }
+
+            query2.print_checksum("query2");
+
+            state.push(secret2);
+            msg.push(query2);
+        }
+
+        out.push((state, msg));
+    }
+
+    out
+}
+
 /// Returns answer.
 pub fn answer(
     db: &Db,
@@ -309,23 +388,24 @@ pub fn recover(
 
     info!("val2: {}", val2);
 
-    let a_2 = shared[1].clone();
-    if (a_2.cols != params.n) || (h1.cols != params.n) {
+    if h1.cols != params.n {
         panic!("Should not happen!");
     }
 
-    for j1 in 0..params.n {
-        let mut val3 = 0u64;
-        for j2 in 0..a_2.rows {
-            val3 += ratio * (a_2[j2][j1] as u64);
-        }
-        val3 %= 1 << params.logq;
-        val3 = (1 << params.logq) - val3;
+    if shared.len() > 0 {
+        let a_2 = &shared[1];
+        for j1 in 0..params.n {
+            let mut val3 = 0u64;
+            for j2 in 0..a_2.rows {
+                val3 += ratio * (a_2[j2][j1] as u64);
+            }
+            val3 %= 1 << params.logq;
+            val3 = (1 << params.logq) - val3;
 
-        let v = val3 as u32;
-        // info!("v: {}", v);
-        for k in 0..h1.rows {
-            h1.data[k * h1.cols + j1] += v;
+            let v = val3 as u32;
+            for k in 0..h1.rows {
+                h1.data[k * h1.cols + j1] += v;
+            }
         }
     }
     h1.print_checksum("h1 (#2)");

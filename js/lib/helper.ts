@@ -31,15 +31,11 @@ const key2 = new Uint8Array([
 
 async function aes_derive_fast(
   keyIdx: number,
-  _ctr: bigint,
+  chunkIdx: number,
   dst: number,
   len: number
 ) {
   const wasmInit = (window as any).wasmInit;
-  console.log('here.....');
-  console.log(wasmInit.memory);
-  console.log(dst, len);
-
   const rawKey = keyIdx == 1 ? key1 : key2;
   const key = await crypto.subtle.importKey(
     'raw',
@@ -49,42 +45,25 @@ async function aes_derive_fast(
     ['encrypt', 'decrypt']
   );
 
-  const chunkSize = 65536;
-  const data = new Uint8Array(chunkSize);
+  const data = new Uint8Array(len);
 
-  const numChunks = Math.floor((len + chunkSize - 1) / chunkSize);
-  for (let i = 0; i < numChunks; i++) {
-    // console.log(i);
-    const counter = new Uint8Array(16);
-    const dv = new DataView(counter.buffer);
-    dv.setBigUint64(0, BigInt(i), false);
-    const val = await window.crypto.subtle.encrypt(
-      {
-        name: 'AES-CTR',
-        counter,
-        length: 64
-      },
-      key,
-      data
-    );
-    const start = i * chunkSize;
-    let outLen = chunkSize;
-    if (i === numChunks - 1) {
-      console.log('last one');
-      outLen = len - start;
-    }
-    const outRound = new Uint8Array(
-      wasmInit.memory.buffer,
-      dst + start,
-      outLen
-    );
-    outRound.set(new Uint8Array(val.slice(0, outLen)));
-  }
+  const counter = new Uint8Array(16);
+  const dv = new DataView(counter.buffer);
+  dv.setBigUint64(0, BigInt(chunkIdx), false);
+  const val = await window.crypto.subtle.encrypt(
+    {
+      name: 'AES-CTR',
+      counter,
+      length: 64 // bits for counter
+    },
+    key,
+    data
+  );
+  const outRound = new Uint8Array(wasmInit.memory.buffer, dst, len);
+  outRound.set(new Uint8Array(val.slice(0, len)));
 
-  console.log(`idx: ${keyIdx}`);
-  console.log(new Uint8Array(wasmInit.memory.buffer, dst, 128));
-  console.log(new Uint8Array(wasmInit.memory.buffer, dst + 258 * 65536, 128));
-  // console.log('yay');
+  // console.log(`idx: ${keyIdx}`);
+  // console.log(new Uint8Array(wasmInit.memory.buffer, dst, 128));
 }
 
 let windowObj: any;
@@ -97,7 +76,7 @@ if (typeof window !== 'undefined') {
 }
 
 windowObj.aes_derive_fast_1 = async function (
-  ctr: bigint,
+  ctr: number,
   dst: number,
   len: number
 ) {
@@ -105,7 +84,7 @@ windowObj.aes_derive_fast_1 = async function (
 };
 
 windowObj.aes_derive_fast_2 = async function (
-  ctr: bigint,
+  ctr: number,
   dst: number,
   len: number
 ) {

@@ -2,6 +2,7 @@ use rand::{thread_rng, Rng};
 
 use crate::{
     database::*,
+    matrix::Matrix,
     params::Params,
     pir::*,
     serializer::{DeserializeSlice, Serialize, State},
@@ -89,16 +90,8 @@ impl DoublePirClient {
         }
     }
 
-    pub async fn with_params_derive_fast<T, Fut>(
-        params: &Params,
-        db_info: &DbInfo,
-        derive: fn(&[u8; 16], u64, &mut [u8]) -> Fut,
-    ) -> Self
-    where
-        Fut: Future<Output = T>,
-        T: Sized,
-    {
-        let shared_state = doublepir::init_derive_fast(db_info, params, derive).await;
+    pub async fn with_params_derive_fast(params: &Params, db_info: &DbInfo) -> Self {
+        let shared_state = Vec::new(); //doublepir::init_derive_fast(db_info, params, derive).await;
         let hint = State::new();
         Self {
             num_entries: db_info.num_entries,
@@ -108,6 +101,25 @@ impl DoublePirClient {
             db_info: *db_info,
             hint,
         }
+    }
+
+    async fn generate_query_multiple<Fut, T>(
+        &self,
+        target_indices: &[u64],
+        derive_fn: fn(u32, u32, &mut [u8]) -> Fut,
+    ) -> Vec<(Vec<u8>, Vec<u8>)>
+    where
+        Fut: Future<Output = T>,
+        T: Sized,
+    {
+        let output =
+            doublepir::query_multiple_fast(target_indices, derive_fn, &self.params, &self.db_info)
+                .await;
+
+        output
+            .into_iter()
+            .map(|(s, q)| (q.serialize(), vec![s, q].serialize()))
+            .collect()
     }
 
     pub fn load_hint_from_file(&mut self, hint_file_name: &str) {
@@ -160,10 +172,7 @@ impl DoublePirClient {
         result.to_ne_bytes().to_vec()
     }
 
-    pub fn generate_query_batch(
-        &self,
-        indices: &[u64],
-    ) -> (Vec<State>, Vec<Vec<u8>>, Vec<Option<(u64, u64)>>) {
+    pub fn generate_query_plan(&self, indices: &[u64]) -> (Vec<Option<(u64, u64)>>, Vec<u64>) {
         let params = self.params_ref();
         let dbinfo = self.dbinfo_ref();
 
@@ -179,8 +188,6 @@ impl DoublePirClient {
             let idx_within_batch = *i;
 
             println!("gave {} batch {} (row = {})", idx_within_batch, batch, row);
-
-            // assert_eq!((*i) % 2, idx_within_batch % 2);
 
             let cur_val = query_plan[batch as usize];
             if cur_val.is_some() {
@@ -203,14 +210,75 @@ impl DoublePirClient {
             }
         }
 
+        (query_plan, target_indices)
+    }
+
+    pub fn generate_queries_from_indices(
+        &self,
+        target_indices: &[u64],
+    ) -> (Vec<State>, Vec<Vec<u8>>) {
         let mut queries: Vec<State> = Vec::new();
         let mut client_states: Vec<Vec<u8>> = Vec::new();
         for target_idx in target_indices {
-            let (query, client_state) = self.generate_query(target_idx);
+            let (query, client_state) = self.generate_query(*target_idx);
             let query_data = State::deserialize(&query);
             queries.push(query_data);
             client_states.push(client_state);
         }
+
+        (queries, client_states)
+    }
+
+    pub async fn generate_queries_from_indices_fast<Fut, T>(
+        &self,
+        target_indices: &[u64],
+        derive_fn: fn(u32, u32, &mut [u8]) -> Fut,
+    ) -> (Vec<State>, Vec<Vec<u8>>)
+    where
+        Fut: Future<Output = T>,
+        T: Sized,
+    {
+        let result = self
+            .generate_query_multiple(target_indices, derive_fn)
+            .await;
+
+        let (queries, client_states): (Vec<_>, Vec<_>) = result.into_iter().unzip();
+
+        (
+            queries
+                .into_iter()
+                .map(|x| State::deserialize(&x))
+                .collect(),
+            client_states,
+        )
+    }
+
+    pub fn generate_query_batch(
+        &self,
+        indices: &[u64],
+    ) -> (Vec<State>, Vec<Vec<u8>>, Vec<Option<(u64, u64)>>) {
+        let (query_plan, target_indices) = self.generate_query_plan(indices);
+
+        let (queries, client_states) = self.generate_queries_from_indices(&target_indices);
+
+        (queries, client_states, query_plan)
+    }
+
+    pub async fn generate_query_batch_fast<Fut, T>(
+        &self,
+        indices: &[u64],
+        derive_fn: fn(u32, u32, &mut [u8]) -> Fut,
+    ) -> (Vec<State>, Vec<Vec<u8>>, Vec<Option<(u64, u64)>>)
+    where
+        Fut: Future<Output = T>,
+        T: Sized,
+    {
+        let (query_plan, target_indices) = self.generate_query_plan(indices);
+
+        let (queries, client_states) = self
+            .generate_queries_from_indices_fast(&target_indices, derive_fn)
+            .await;
+        // panic!("query[0] len {}", queries.len());
 
         (queries, client_states, query_plan)
     }

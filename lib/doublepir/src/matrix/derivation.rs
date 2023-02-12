@@ -1,18 +1,67 @@
+use std::future::Future;
+
 use aes::cipher::{KeyIvInit, StreamCipher};
+
+use super::Matrix;
 
 type Aes128Ctr64BE = ctr::Ctr64BE<aes::Aes128>;
 
+const DERIVE_CHUNK_SIZE: usize = 65536;
+
 pub fn derive_with_aes(key: [u8; 16], out: &mut [u8]) {
-    for (i, chunk) in out.chunks_mut(65536).enumerate() {
-        let mut iv = [0u8; 16];
-        (&mut iv[0..8]).copy_from_slice(&(i as u64).to_be_bytes());
-        let mut cipher = Aes128Ctr64BE::new(&key.into(), &iv.into());
-        cipher.apply_keystream(chunk);
+    for (i, chunk) in out.chunks_mut(DERIVE_CHUNK_SIZE).enumerate() {
+        derive_with_aes_at(key, i as u32, chunk);
     }
 }
+
+pub fn derive_with_aes_at(key: [u8; 16], i: u32, out: &mut [u8]) {
+    let mut iv = [0u8; 16];
+    (&mut iv[0..8]).copy_from_slice(&(i as u64).to_be_bytes());
+    let mut cipher = Aes128Ctr64BE::new(&key.into(), &iv.into());
+    cipher.apply_keystream(out);
+}
+
+/// Computes the multiplication of the matrix derived using derive(derive_idx, _, _)
+/// by matrix `b`, producing a matrix.
+///
+/// The derived matrix is taken to be (m x n) and the input matrix is (n x ?).
+pub async fn matrix_mul_derive_fn<T, Fut>(
+    m: usize,
+    n: usize,
+    b: &Matrix,
+    derive: fn(u32, u32, &mut [u8]) -> Fut,
+    derive_idx: u32,
+) -> Matrix
+where
+    Fut: Future<Output = T>,
+    T: Sized,
+{
+    assert_eq!(b.rows, n);
+    assert_eq!((DERIVE_CHUNK_SIZE / 4) % n, 0);
+
+    let row_chunks = (DERIVE_CHUNK_SIZE / 4) / n;
+    assert!(m >= row_chunks);
+
+    let mut out = Matrix::new(m, b.cols);
+    for m_i in (0..m).step_by(row_chunks) {
+        let mut rows_in_cur_chunk = row_chunks.min(m - m_i);
+
+        let mut partial_a = Matrix::new(rows_in_cur_chunk, n);
+        let partial_bytes = unsafe { partial_a.raw_bytes_mut() };
+        // assert!(partial_bytes.len() == DERIVE_CHUNK_SIZE || ... );
+        derive(derive_idx, (m_i / row_chunks) as u32, partial_bytes).await;
+
+        let partial_result = &partial_a * b;
+        (&mut out.data[m_i * out.cols..(m_i + rows_in_cur_chunk) * out.cols])
+            .copy_from_slice(&partial_result.data)
+    }
+
+    out
+}
+
 #[cfg(test)]
 mod tests {
-    use rand::{thread_rng, Rng};
+    use std::future;
 
     use crate::util::SEEDS_SHORT;
 
@@ -34,6 +83,26 @@ mod tests {
         println!("{:?}", &data[258 * 65536..258 * 65536 + 32]);
         assert_eq!(data[0], 132);
         assert_eq!(data[258 * 65536], 254);
+    }
+
+    #[tokio::test]
+    async fn matrix_mul_derive_fn_is_correct() {
+        let m = 256;
+        let n = 1024;
+        let c = 8;
+        let b = Matrix::random(n, c);
+
+        let a_gold = Matrix::derive_from_seed(m, n, SEEDS_SHORT[0]);
+
+        let derive_fn = |s: u32, i: u32, out: &mut [u8]| {
+            future::ready(derive_with_aes_at(SEEDS_SHORT[(s as usize) - 1], i, out))
+        };
+
+        let result = matrix_mul_derive_fn(m, n, &b, derive_fn, 1).await;
+
+        let gold = &a_gold * &b;
+
+        assert_eq!(result, gold);
     }
 }
 // #[cfg(feature = "web-sys")]

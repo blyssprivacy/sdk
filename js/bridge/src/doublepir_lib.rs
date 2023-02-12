@@ -1,18 +1,10 @@
 use doublepir_rs::{
-    database::DbInfo,
-    doublepir::*,
-    matrix::SquishParams,
-    params::Params,
-    pir::PirClient,
-    serializer::Serialize,
-    util::SEEDS_SHORT,
+    database::DbInfo, doublepir::*, matrix::SquishParams, params::Params, pir::PirClient,
+    serializer::Serialize, util::SEEDS_SHORT,
 };
-use js_sys::Promise;
+use js_sys::{Promise, Uint8Array};
 use serde_json::{self, Value};
-use std::{
-    convert::TryInto,
-    fmt::Write,
-};
+use std::{convert::TryInto, fmt::Write};
 use wasm_bindgen::prelude::*;
 
 use sha1::{Digest, Sha1};
@@ -97,15 +89,14 @@ pub struct DoublePIRApiClient {
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = window)]
-    fn aes_derive_fast_1(ctr: u64, dst: *mut u8, len: u32) -> Promise;
+    fn aes_derive_fast_1(ctr: u32, dst: *mut u8, len: u32) -> Promise;
 
     #[wasm_bindgen(js_namespace = window)]
-    fn aes_derive_fast_2(ctr: u64, dst: *mut u8, len: u32) -> Promise;
+    fn aes_derive_fast_2(ctr: u32, dst: *mut u8, len: u32) -> Promise;
 }
 
-fn derive_fast(seed: &[u8; 16], ctr: u64, dst: &mut [u8]) -> JsFuture {
-    if SEEDS_SHORT[0][0] == seed[0] {
-        console::log_1(&format!("{:?} {:?}", dst.as_mut_ptr(), dst.len()).into());
+fn derive_fast(seed: u32, ctr: u32, dst: &mut [u8]) -> JsFuture {
+    if seed == 1 {
         JsFuture::from(aes_derive_fast_1(ctr, dst.as_mut_ptr(), dst.len() as u32))
     } else {
         JsFuture::from(aes_derive_fast_2(ctr, dst.as_mut_ptr(), dst.len() as u32))
@@ -136,7 +127,6 @@ impl DoublePIRApiClient {
                 squish_params: SquishParams::default(),
                 orig_cols: 92683,
             },
-            derive_fast,
         )
         .await;
         let client = Box::leak(Box::new(raw_client));
@@ -162,6 +152,19 @@ impl DoublePIRApiClient {
         self.states = client_states;
         self.query_plan = query_plan;
         queries.serialize().into_boxed_slice()
+    }
+
+    pub async fn generate_query_batch_fast(&mut self, indices: Vec<u64>) -> Uint8Array {
+        self.indices = indices.clone();
+        console::log_1(&format!("sending: {:?}", indices).into());
+        let (queries, client_states, query_plan) = self
+            .client
+            .generate_query_batch_fast(&indices, derive_fast)
+            .await;
+        self.states = client_states;
+        self.query_plan = query_plan;
+
+        Uint8Array::from(queries.serialize().as_slice())
     }
 
     pub fn load_hint(&mut self, hint: Box<[u8]>) {

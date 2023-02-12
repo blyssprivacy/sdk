@@ -186,12 +186,21 @@ export class Bucket {
     console.log('getting hint + send query');
     const hint = this.getHint();
     console.time('querygen');
-    const query = this.dpLib.generate_query_batch(indices);
+    const query = await this.dpLib.generate_query_batch_fast(indices);
     console.timeEnd('querygen');
+    console.log('query len', query.length);
     const queryResult = this.getRawResponseMultipart(query);
     this.dpLib.load_hint(await hint);
-    const decryptedResult = this.dpLib.decode_response_batch(await queryResult);
+    const result = await queryResult;
+
+    console.time('decoding');
+    const start = performance.now();
+    console.log('here', start);
+    const decryptedResult = this.dpLib.decode_response_batch(result);
+    console.timeEnd('decoding');
+    console.log('done decoding', performance.now() - start);
     console.log('decrypted');
+
     console.log('got:', decryptedResult);
 
     let count = 0;

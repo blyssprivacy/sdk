@@ -182,7 +182,9 @@ fn raw_mat_mul_add(
         for k in 0..a_cols {
             for j in 0..b_cols {
                 // c[b_cols * i + j] += a[a_cols * i + k] * b[b_cols * k + j];
-                c[b_cols * i + j] += a[a_cols * i + k].wrapping_mul(b[b_cols * k + j]);
+                // c[b_cols * i + j] += a[a_cols * i + k].wrapping_mul(b[b_cols * k + j]);
+                c[b_cols * i + j] = c[b_cols * i + j]
+                    .wrapping_add(a[a_cols * i + k].wrapping_mul(b[b_cols * k + j]));
             }
         }
     }

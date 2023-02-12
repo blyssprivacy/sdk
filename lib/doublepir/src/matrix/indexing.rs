@@ -30,7 +30,7 @@ impl<'a> MatrixRef<'a> {
 
 impl Matrix {
     pub fn column(&self, col: usize) -> Matrix {
-        let mut out = Matrix::new(self.cols, 1);
+        let mut out = Matrix::new(self.rows, 1);
         for i in 0..self.rows {
             out[i][0] = self[i][col];
         }

@@ -198,6 +198,12 @@ impl Matrix {
     pub fn print_dims(&self, msg: &str) {
         println!("{}: ({} x {})", msg, self.rows, self.cols);
     }
+
+    pub unsafe fn raw_bytes_mut(&mut self) -> &mut [u8] {
+        let ptr = self.data.as_mut_ptr() as *mut u8;
+        let slice: &mut [u8] = slice::from_raw_parts_mut(ptr, self.data.len() * 4);
+        slice
+    }
 }
 
 impl Clone for Matrix {
