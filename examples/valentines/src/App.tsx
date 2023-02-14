@@ -267,6 +267,14 @@ function App() {
   async function animatePost(to: string, message: string): Promise<void> {
     setPosting(true);
 
+    // enforce size limits
+    if (to.length > 500) {
+      to = to.slice(0, 500);
+    }
+    if (message.length > 1000) {
+      message = message.slice(0, 500);
+    }
+
     // 0. Derive an encryption key from the recipient's handle
     const key = await deriveMessageKey(to);
 
@@ -316,6 +324,11 @@ function App() {
 
   async function animateFetch(to: string): Promise<void> {
     setLoading(true);
+
+    // enforce size limits
+    if (to.length > 500) {
+      to = to.slice(0, 500);
+    }
 
     // 1. Get a handle to the bucket
     let bucket = bucketHandle;

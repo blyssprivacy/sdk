@@ -78,14 +78,14 @@ code {
   align-items: stretch;
   margin-top: 20px;
   margin-bottom: 20px;
+  color: black;
 }
 
 .actioncard input, .actioncard textarea {
-  background: #888;
+  background: #BBB;
   border: none;
   border-radius: 5px;
   padding: 10px;
-  color: black;
   /* without this repeat, input won't inherit from actioncard? */
   font-family: "PlexMonoRegular";
   font-size: 16px;
