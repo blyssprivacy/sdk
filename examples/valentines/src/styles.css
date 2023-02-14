@@ -1,0 +1,197 @@
+@font-face {
+  font-family: 'PlexMonoRegular';
+  src: url('../fonts/IBMPlexMono-Regular.woff2') format('woff2');
+}
+
+:root {
+  --blyss-pink: #F68E9D;
+}
+
+
+body {
+  margin: auto;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen",
+    "Ubuntu", "Cantarell", "Fira Sans", "Droid Sans", "Helvetica Neue",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: #282c34;
+  color: white;
+}
+
+a {
+  color: var(--blyss-pink);
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New",
+    monospace;
+  background-color: #222;
+  border-radius: 5px;
+  padding: 5px;
+}
+
+
+.App {
+  display: flex;
+  flex-direction: column;
+  /* align-items: center; */
+  max-width: 900px;
+  margin: auto;
+  padding: 20px;
+}
+
+.title {
+  font-family: "PlexMonoRegular";
+  text-align: center;
+  font-size: 30px;
+  margin-top: 5%;
+}
+
+.deck {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  gap: 30px;
+  flex-wrap: wrap;
+}
+
+.actioncard {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 10px;
+  padding: 20px;
+  border: var(--blyss-pink) dashed 2px;
+  border-radius: 20px;
+  width: 300px;
+  max-height: 400px;
+  background-color: #222;
+  font-family: "PlexMonoRegular";
+  font-size: 16px;
+  
+}
+
+.actioncard-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  margin-top: 20px;
+  margin-bottom: 20px;
+}
+
+.actioncard input, .actioncard textarea {
+  background: #888;
+  border: none;
+  border-radius: 5px;
+  padding: 10px;
+  color: black;
+  /* without this repeat, input won't inherit from actioncard? */
+  font-family: "PlexMonoRegular";
+  font-size: 16px;
+}
+
+.actioncard h2 {
+  margin: 0px;
+}
+
+
+.actioncard-buttons {
+  display: flex;
+  flex-direction: row;
+  column-gap: 20px;
+  align-items: center;
+}
+
+
+button {
+  background: var(--blyss-pink);
+  border: none;
+  border-radius: 10px;
+  padding: 10px;
+  font-family: "PlexMonoRegular";
+  font-size: 16px;
+  color: black;
+  text-align: center;
+}
+
+.App-main {
+  /* padding: 60px;
+  padding-top: 120px; */
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.explainer {
+  font-size: 24px;
+  line-height: 1.5;
+  margin-left: 10%;
+  margin-right: 10%;
+}
+
+.footer {
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 50px;
+  gap: 50px;
+}
+
+.FAQ {
+  max-width: 500px;
+  line-height: 1.6;
+}
+
+.FAQ h4{
+  margin-bottom: 0px
+}
+.FAQ p{
+  margin-top: 10px
+}
+
+.trace {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 200px;
+}
+
+.logline {
+  margin-bottom: 10px
+}
+
+@keyframes heartBeat {
+  0% { transform: scale(0.95) }
+  5% { transform: scale(1.1) }
+  39% { transform: scale(0.85) }
+  45% { transform: scale(1) }
+  60% { transform: scale(0.95) }
+  100% { transform: scale(0.9) }
+}
+      
+.loader {
+  position: relative;
+  width: 20px;
+  height: 30px;
+  animation: heartBeat 1.2s infinite cubic-bezier(0.215, 0.61, 0.355, 1);
+}
+
+.loader:before,
+.loader:after {
+  content: "";
+  background: #ff3d00 ;
+  width: 20px;
+  height: 30px;
+  border-radius: 50px 50px 0 0;
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  transform: rotate(45deg);
+  transform-origin: 50% 68%;
+  box-shadow: 5px 4px 5px #0004 inset;
+}
+.loader:after {
+  transform: rotate(-45deg);
+}

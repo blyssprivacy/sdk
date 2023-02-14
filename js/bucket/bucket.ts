@@ -87,8 +87,25 @@ export class Bucket {
 
   private async getEndResult(key: string, queryResult: Uint8Array) {
     const decryptedResult = this.lib.decodeResponse(queryResult);
-    const decompressedResult = decompress(decryptedResult);
-    const extractedResult = this.lib.extractResult(key, decompressedResult);
+
+    let decompressedResult = null;
+    try {
+      decompressedResult = decompress(decryptedResult);
+    } catch (e) {
+      console.log('decompress error', e);
+    }
+    if (decompressedResult === null) {
+      return null;
+    }
+
+    let extractedResult = null;
+    try {
+      extractedResult = this.lib.extractResult(key, decompressedResult);
+    } catch {}
+    if (extractedResult === null) {
+      return null;
+    }
+
     const result = deserialize(extractedResult);
     return result;
   }
@@ -259,8 +276,14 @@ export class Bucket {
    *
    * @param {string} key - The key to _privately_ retrieve the value of.
    */
-  async privateRead(key: string): Promise<any> {
-    return (await this.performPrivateRead(key)).data;
+  async privateRead(key: string | string[]): Promise<any> {
+    if (Array.isArray(key)) {
+      return (await this.performPrivateReads(key)).map(r => r.data);
+    } else {
+      console.log('key', key);
+      let result = await this.performPrivateRead(key);
+      return result ? result.data : null;
+    }
   }
 
   /**
@@ -289,19 +312,25 @@ export class Bucket {
    *
    * @param keys - The keys to _privately_ intersect the value of.
    */
-  async privateIntersect(keys: string[]): Promise<any> {
+  async privateIntersect(
+    keys: string[],
+    retrieveValues: boolean = true
+  ): Promise<any> {
     if (keys.length < BLOOM_CUTOFF) {
       return (await this.performPrivateReads(keys)).map(x => x.data);
     }
 
     const bloomFilter = await this.api.bloom(this.name);
-    const matches = [];
+    const matches: string[] = [];
     for (const key of keys) {
       if (await bloomLookup(bloomFilter, key)) {
         matches.push(key);
       }
     }
 
+    if (!retrieveValues) {
+      return matches;
+    }
     return (await this.performPrivateReads(matches)).map(x => x.data);
   }
 
