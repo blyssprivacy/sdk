@@ -82,13 +82,17 @@ code {
 }
 
 .actioncard input, .actioncard textarea {
-  background: #BBB;
+  background: #FFF;
   border: none;
   border-radius: 5px;
   padding: 10px;
   /* without this repeat, input won't inherit from actioncard? */
   font-family: "PlexMonoRegular";
   font-size: 16px;
+}
+
+::placeholder {
+  color: #555;
 }
 
 .actioncard h2 {
