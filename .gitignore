@@ -6,3 +6,5 @@ node_modules
 
 .env/
 *.pyc
+*build/
+.DS_Store
