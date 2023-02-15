@@ -74,36 +74,34 @@ function SendValentineCard({
   handler: (e: React.FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <div className="actioncard">
+    <form className="actioncard" onSubmit={handler}>
       <h2>😘 Send</h2>
-      <div>
-        <form onSubmit={handler}>
-          <div className="actioncard-field">
-            <input
-              type="text"
-              id="to"
-              placeholder="mailbox destination"
-              title="up to 500 Unicode chars, enforced by truncation."
-              required
-            />
-          </div>
-          <div className="actioncard-field">
-            <textarea
-              id="msg"
-              placeholder="Valentine message"
-              title="UTF8 up to 1KiB, enforced by truncation. Message will be client-side encrypted, using a key derived from the recipient's name."
-              required
-            />
-          </div>
-          <div className="actioncard-buttons">
-            <button disabled={loading}>
-              {loading ? '  sending...  ' : 'send valentine'}
-            </button>
-            <div>{loading ? <div className="loader"></div> : null}</div>
-          </div>
-        </form>
+      <div className="actioncard-field">
+        <h3>To:</h3>
+        <input
+          type="text"
+          id="to"
+          // placeholder="mailbox destination"
+          title="up to 500 Unicode chars, enforced by truncation."
+          required
+        />
       </div>
-    </div>
+      <div className="actioncard-field">
+        <h3>Valentine message:</h3>
+        <textarea
+          id="msg"
+          // placeholder="Valentine message"
+          title="UTF8 up to 1KiB, enforced by truncation. Message will be client-side encrypted, using a key derived from the recipient's name."
+          required
+        />
+      </div>
+      <div className="actioncard-buttons">
+        <button disabled={loading}>
+          {loading ? '  sending...  ' : 'send valentine'}
+        </button>
+        <div>{loading ? <div className="loader"></div> : null}</div>
+      </div>
+    </form>
   );
 }
 
@@ -117,34 +115,35 @@ function PrivateReceiveValentineCard({
   handler: (e: React.FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <div className="actioncard">
+    <form className="actioncard" onSubmit={handler}>
       <h2>💌 Private Retrieve</h2>
-      <form onSubmit={handler}>
-        <div className="actioncard-field">
-          <input
-            type="text"
-            id="to"
-            placeholder="mailbox to check"
-            title="up to 500 Unicode chars, enforced by truncation."
-            required
-          />
-        </div>
-        <div className="actioncard-field">
-          <textarea
-            id="msg"
-            value={fetchedMessage}
-            title="display for the fetched message."
-            disabled
-          />
-        </div>
-        <div className="actioncard-buttons">
-          <button disabled={loading}>
-            {loading ? 'fetching...' : 'fetch valentine'}
-          </button>
-          <div>{loading ? <div className="loader"></div> : null}</div>
-        </div>
-      </form>
-    </div>
+      <div className="actioncard-field">
+        <h3>Mailbox to check:</h3>
+        <input
+          type="text"
+          id="to"
+          placeholder="(recipient's name)"
+          title="up to 500 Unicode chars, enforced by truncation."
+          required
+        />
+      </div>
+      <div className="actioncard-field">
+        <h3>Received message:</h3>
+        <textarea
+          className="fetchedMessage"
+          id="msg"
+          value={fetchedMessage}
+          title="display for the fetched message."
+          readOnly
+        />
+      </div>
+      <div className="actioncard-buttons">
+        <button disabled={loading}>
+          {loading ? 'fetching...' : 'fetch valentine'}
+        </button>
+        <div>{loading ? <div className="loader"></div> : null}</div>
+      </div>
+    </form>
   );
 }
 
@@ -175,10 +174,8 @@ function Faq() {
         multiplayer in your browser. Five years ago, this demo probably did seem
         impossible, but a lot of recent work has made FHE fast enough for some
         specific applications, like the private information retrieval we show
-        here. Want to try using fast FHE in your own apps?{' '}
-        <a href="https://github.com/blyssprivacy/sdk">
-          Here's our open-source SDK!
-        </a>
+        here. Want to try using fast FHE in your own apps? Here's our{' '}
+        <a href="https://github.com/blyssprivacy/sdk">open-source SDK!</a>
       </p>
 
       <h4>How are my message contents secured?</h4>
@@ -257,9 +254,7 @@ function App() {
   const [numMessages, setNumMessages] = useState(
     Math.floor(Math.random() * 100) + 950
   );
-  const [fetchedMessage, setfetchedMessage] = useState(
-    '(waiting for retrieval)'
-  );
+  const [fetchedMessage, setfetchedMessage] = useState('');
 
   const [trace, setTrace] = useState<Log[]>([]);
   const logMessage = (t: Log) => setTrace([t, ...trace]);
