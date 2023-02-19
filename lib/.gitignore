@@ -4,3 +4,4 @@ target/
 *.DS_Store
 .cache/
 dist/
+data
