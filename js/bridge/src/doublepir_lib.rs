@@ -1,6 +1,6 @@
 use doublepir_rs::{
     database::DbInfo, doublepir::*, matrix::SquishParams, params::Params, pir::PirClient,
-    serializer::Serialize, util::SEEDS_SHORT,
+    serializer::Serialize,
 };
 use js_sys::{Promise, Uint8Array};
 use serde_json::{self, Value};

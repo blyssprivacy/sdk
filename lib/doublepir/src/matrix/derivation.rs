@@ -44,7 +44,7 @@ where
 
     let mut out = Matrix::new(m, b.cols);
     for m_i in (0..m).step_by(row_chunks) {
-        let mut rows_in_cur_chunk = row_chunks.min(m - m_i);
+        let rows_in_cur_chunk = row_chunks.min(m - m_i);
 
         let mut partial_a = Matrix::new(rows_in_cur_chunk, n);
         let partial_bytes = unsafe { partial_a.raw_bytes_mut() };

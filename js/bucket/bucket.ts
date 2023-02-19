@@ -111,7 +111,9 @@ export class Bucket {
     let extractedResult = null;
     try {
       extractedResult = this.lib.extractResult(key, decompressedResult);
-    } catch {}
+    } catch (e) {
+      console.log('extraction error', e);
+    }
     if (extractedResult === null) {
       return null;
     }

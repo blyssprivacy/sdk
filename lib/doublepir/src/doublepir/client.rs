@@ -2,7 +2,6 @@ use rand::{thread_rng, Rng};
 
 use crate::{
     database::*,
-    matrix::Matrix,
     params::Params,
     pir::*,
     serializer::{DeserializeSlice, Serialize, State},
