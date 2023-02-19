@@ -15,6 +15,18 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 wasm-bindgen = "0.2.83"
 spiral-rs = { path = "../../lib/spiral-rs" }
+doublepir-rs = { path = "../../lib/doublepir" }
+serde_json = "1.0.91"
+sha2 = "0.10"
+sha1 = "0.10.5"
+js-sys = { version = "0.3" }
+wasm-bindgen-futures = "0.4.34"
+console_error_panic_hook = "0.1.7"
+getrandom = { version = "0.2", features = ["js"] }
+
+[dependencies.web-sys]
+version = "0.3"
+features = [ "console" ]
 
 [dev-dependencies]
 wasm-bindgen-test = "0.2.45"
@@ -22,6 +34,7 @@ futures = "0.1.27"
 
 [profile.release]
 opt-level = "s"
+panic="unwind"
 # lto = "fat"
 # codegen-units = 1
 # panic = "abort"

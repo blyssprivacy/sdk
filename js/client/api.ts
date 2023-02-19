@@ -1,4 +1,5 @@
 import { KeyInfo } from '../bucket/bucket';
+import { BLYSS_HINT_URL_PREFIX } from '../bucket/bucket_service';
 import { gzip } from '../compression/pako';
 import { BloomFilter, bloomFilterFromBytes } from '../data/bloom';
 
@@ -10,6 +11,7 @@ const META_PATH = '/meta';
 const BLOOM_PATH = '/bloom';
 const LIST_KEYS_PATH = '/list-keys';
 const SETUP_PATH = '/setup';
+const HINT_PATH = '/hint';
 const WRITE_PATH = '/write';
 const READ_PATH = '/private-read';
 
@@ -246,6 +248,17 @@ class Api {
     return prelim_result;
   }
 
+  /**
+   * Download hint data.
+   *
+   * @param bucketName The name of the bucket to get the hint data for.
+   */
+  async hint(bucketName: string): Promise<Uint8Array> {
+    const url = BLYSS_HINT_URL_PREFIX + bucketName + '.hint';
+    const result = await getData(null, url, false);
+    return result;
+  }
+
   /** Destroy this bucket. */
   async destroy(bucketName: string) {
     await postData(
@@ -282,6 +295,33 @@ class Api {
       this.apiKey,
       this.urlFor(bucketName, READ_PATH),
       data,
+      false
+    );
+  }
+
+  /** Privately read data from this bucket. */
+  async privateReadMultipart(
+    bucketName: string,
+    data: Uint8Array,
+    targetUrl?: string
+  ): Promise<Uint8Array> {
+    if (!targetUrl) targetUrl = this.urlFor(bucketName, READ_PATH);
+
+    const prelim_result = await postData(this.apiKey, targetUrl, '', true);
+    console.log(prelim_result);
+
+    // perform the long upload
+    const result = await postFormData(
+      prelim_result['url'],
+      prelim_result['fields'],
+      data
+    );
+    console.log(result);
+
+    return await postData(
+      this.apiKey,
+      targetUrl,
+      JSON.stringify({ uuid: prelim_result['uuid'] }),
       false
     );
   }

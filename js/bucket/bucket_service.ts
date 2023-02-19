@@ -17,7 +17,8 @@ const DEFAULT_BUCKET_PARAMETERS: BucketParameters = {
 };
 
 const BLYSS_BUCKET_URL = 'https://beta.api.blyss.dev';
-
+export const BLYSS_HINT_URL_PREFIX =
+  'https://blyss-hints.s3.us-east-2.amazonaws.com/';
 /** Information specifying how to connect to a Blyss bucket service API endpoint. */
 export interface ApiConfig {
   /** A fully qualified endpoint URL for the bucket service. */
@@ -89,13 +90,9 @@ export class BucketService {
    *   requested parameters for the bucket. Defaults to `{}`. This is currently
    *   unused.
    */
-  async create(
-    bucketName: string,
-    openAccess?: boolean,
-    params?: Partial<BucketParameters>
-  ) {
+  async create(bucketName: string, openAccess?: boolean, params?: any) {
     openAccess = openAccess || false;
-    const parameters = { ...DEFAULT_BUCKET_PARAMETERS, params };
+    const parameters = { ...DEFAULT_BUCKET_PARAMETERS, ...params };
     const bucketCreateReq = {
       name: bucketName,
       parameters: JSON.stringify(parameters),

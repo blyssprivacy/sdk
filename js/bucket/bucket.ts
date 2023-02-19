@@ -11,7 +11,7 @@ import {
   serializeChunks,
   wrapKeyValue
 } from '../data/serializer';
-import { BlyssLib } from '../lib/blyss_lib';
+import { BlyssLib, DoublePIRApiClient } from '../lib/blyss_lib';
 
 /**
  * Maximum number of private reads to perform before using the Bloom filter
@@ -51,11 +51,20 @@ export class Bucket {
   /** The metadata of this bucket. */
   metadata: BucketMetadata;
 
+  /** The underlying PIR scheme to use to access this bucket. */
+  scheme: 'spiral' | 'doublepir';
+
   /** The inner WASM client for this instance of the client. */
   lib: BlyssLib;
 
+  /** The inner DoublePIR WASM client for this instance of the client. */
+  dpLib: DoublePIRApiClient;
+
   /** The public UUID of this client's public parameters. */
   uuid?: string;
+
+  /** The cached hint downloaded from a checklist-enabled bucket. */
+  hint?: Uint8Array;
 
   /**
    * The maximum size of query batches sent to the service. Must be greater than
@@ -67,6 +76,7 @@ export class Bucket {
     this.api = api;
     this.name = name;
     this.secretSeed = getRandomSeed();
+    this.scheme = 'spiral';
     if (secretSeed) {
       this.secretSeed = secretSeed;
     }
@@ -101,7 +111,9 @@ export class Bucket {
     let extractedResult = null;
     try {
       extractedResult = this.lib.extractResult(key, decompressedResult);
-    } catch {}
+    } catch (e) {
+      console.log('extraction error', e);
+    }
     if (extractedResult === null) {
       return null;
     }
@@ -113,6 +125,18 @@ export class Bucket {
   private async getRawResponse(queryData: Uint8Array): Promise<Uint8Array> {
     const queryResult = base64ToBytes(
       new TextDecoder().decode(await this.api.privateRead(this.name, queryData))
+    );
+    return queryResult;
+  }
+
+  private async getRawResponseMultipart(
+    queryData: Uint8Array
+  ): Promise<Uint8Array> {
+    const targetUrl = this.metadata['pir_scheme']['url'];
+    const queryResult = base64ToBytes(
+      new TextDecoder().decode(
+        await this.api.privateReadMultipart(this.name, queryData, targetUrl)
+      )
     );
     return queryResult;
   }
@@ -157,6 +181,70 @@ export class Bucket {
     return (await this.performPrivateReads([key]))[0];
   }
 
+  private async getHint(): Promise<Uint8Array> {
+    if (!this.hint) {
+      this.hint = await this.api.hint(this.name);
+    }
+    return this.hint;
+  }
+
+  private async performDoublePIRRead(key: string): Promise<boolean> {
+    const idx = this.dpLib.get_row(key);
+    const hintPromise = this.getHint();
+    const query = this.dpLib.generate_query(idx);
+    const queryResult = this.getRawResponse(query);
+    this.dpLib.load_hint(await hintPromise);
+    const decryptedResult = this.dpLib.decode_response(await queryResult);
+    const extractedResult = this.dpLib.extract_result(decryptedResult);
+    return extractedResult;
+  }
+
+  private async performDoublePIRReadBatch(key: string): Promise<boolean> {
+    const indices = this.dpLib.get_bloom_indices(key, 8, 36);
+
+    console.log('getting hint + send query');
+    const hint = this.getHint();
+    console.time('querygen');
+    const query = await this.dpLib.generate_query_batch_fast(indices);
+    console.timeEnd('querygen');
+    console.log('query len', query.length);
+    const queryResult = this.getRawResponseMultipart(query);
+    this.dpLib.load_hint(await hint);
+    const result = await queryResult;
+
+    console.time('decoding');
+    const start = performance.now();
+    console.log('here', start);
+    const decryptedResult = this.dpLib.decode_response_batch(result);
+    console.timeEnd('decoding');
+    console.log('done decoding', performance.now() - start);
+    console.log('decrypted');
+
+    console.log('got:', decryptedResult);
+
+    let count = 0;
+    for (let i = 0; i < decryptedResult.length; i++) {
+      const bit = decryptedResult[i];
+      if (bit == 1) {
+        count += 1;
+      } else if (bit == 0) {
+        return false;
+      }
+    }
+
+    return count >= 5;
+  }
+
+  private ensureSpiral() {
+    if (this.scheme !== 'spiral')
+      throw 'Cannot perform this action on this bucket';
+  }
+
+  private ensureDoublePIR() {
+    if (this.scheme !== 'doublepir')
+      throw 'Cannot perform this action on this bucket';
+  }
+
   /**
    * Initialize a client for a single existing Blyss bucket. You should not need
    * to call this method directly. Instead, call `client.connect()` to connect
@@ -174,7 +262,21 @@ export class Bucket {
   ): Promise<Bucket> {
     const b = new this(api, name, secretSeed);
     b.metadata = await b.api.meta(b.name);
-    b.lib = new BlyssLib(JSON.stringify(b.metadata.pir_scheme), b.secretSeed);
+    const scheme = b.metadata.pir_scheme;
+    console.log('got scheme:', scheme['scheme']);
+    if (scheme['scheme'] && scheme['scheme'] === 'doublepir') {
+      scheme['num_entries'] = '' + scheme['num_entries'];
+      b.scheme = 'doublepir';
+
+      console.time('init');
+      b.dpLib = await DoublePIRApiClient.initialize_client(
+        JSON.stringify(scheme)
+      );
+      console.timeEnd('init');
+    } else {
+      b.scheme = 'spiral';
+      b.lib = new BlyssLib(JSON.stringify(scheme), b.secretSeed);
+    }
     return b;
   }
 
@@ -192,6 +294,7 @@ export class Bucket {
    *   data.
    */
   async setup(uuid?: string) {
+    this.ensureSpiral();
     if (uuid && this.check(uuid)) {
       this.lib.generateKeys(false);
       this.uuid = uuid;
@@ -209,6 +312,7 @@ export class Bucket {
 
   /** Gets info on all keys in this bucket. */
   async listKeys(): Promise<KeyInfo[]> {
+    this.ensureSpiral();
     return await this.api.listKeys(this.name);
   }
 
@@ -228,6 +332,8 @@ export class Bucket {
     keyValuePairs: { [key: string]: any },
     metadata?: { [key: string]: any }
   ) {
+    this.ensureSpiral();
+
     const data = [];
     for (const key in keyValuePairs) {
       if (Object.prototype.hasOwnProperty.call(keyValuePairs, key)) {
@@ -256,6 +362,8 @@ export class Bucket {
    * @param {string} key - The key to delete.
    */
   async deleteKey(key: string) {
+    this.ensureSpiral();
+
     await this.api.deleteKey(this.name, key);
   }
 
@@ -276,12 +384,13 @@ export class Bucket {
    *
    * @param {string} key - The key to _privately_ retrieve the value of.
    */
-  async privateRead(key: string | string[]): Promise<any> {
+  async privateRead(key: string): Promise<any> {
+    this.ensureSpiral();
+
     if (Array.isArray(key)) {
       return (await this.performPrivateReads(key)).map(r => r.data);
     } else {
-      console.log('key', key);
-      let result = await this.performPrivateRead(key);
+      const result = await this.performPrivateRead(key);
       return result ? result.data : null;
     }
   }
@@ -296,6 +405,8 @@ export class Bucket {
    * @param {string} key - The key to _privately_ retrieve the value of.
    */
   async privateReadWithMetadata(key: string): Promise<DataWithMetadata> {
+    this.ensureSpiral();
+
     return await this.performPrivateRead(key);
   }
 
@@ -312,10 +423,9 @@ export class Bucket {
    *
    * @param keys - The keys to _privately_ intersect the value of.
    */
-  async privateIntersect(
-    keys: string[],
-    retrieveValues: boolean = true
-  ): Promise<any> {
+  async privateIntersect(keys: string[], retrieveValues = true): Promise<any> {
+    this.ensureSpiral();
+
     if (keys.length < BLOOM_CUTOFF) {
       return (await this.performPrivateReads(keys)).map(x => x.data);
     }
@@ -345,6 +455,8 @@ export class Bucket {
    * @param keys - The keys to _privately_ intersect the value of.
    */
   async privateKeyIntersect(keys: string[]): Promise<string[]> {
+    this.ensureSpiral();
+
     const bloomFilter = await this.api.bloom(this.name);
     const matches = [];
     for (const key of keys) {
@@ -354,6 +466,25 @@ export class Bucket {
     }
 
     return matches;
+  }
+
+  /**
+   * Privately checks if the given key is in the checklist-enabled bucket. This
+   * method is only supported on special global buckets that are
+   * checklist-enabled. The `supportsChecklistInclusion()` method returns a
+   * boolean indicating support.
+   *
+   * @param key - The key to _privately_ check against the checklist.
+   */
+  async checkInclusion(key: string): Promise<boolean> {
+    this.ensureDoublePIR();
+
+    return await this.performDoublePIRReadBatch(key);
+  }
+
+  /** Returns whether this bucket supports `checkInclusion()` */
+  supportsChecklistInclusion(): boolean {
+    return this.scheme === 'doublepir';
   }
 
   /**
