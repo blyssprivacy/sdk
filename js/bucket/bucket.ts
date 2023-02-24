@@ -102,7 +102,7 @@ export class Bucket {
     try {
       decompressedResult = decompress(decryptedResult);
     } catch (e) {
-      console.log('decompress error', e);
+      console.error('decompress error', e);
     }
     if (decompressedResult === null) {
       return null;
@@ -112,7 +112,7 @@ export class Bucket {
     try {
       extractedResult = this.lib.extractResult(key, decompressedResult);
     } catch (e) {
-      console.log('extraction error', e);
+      console.error('extraction error', e);
     }
     if (extractedResult === null) {
       return null;
@@ -202,25 +202,13 @@ export class Bucket {
   private async performDoublePIRReadBatch(key: string): Promise<boolean> {
     const indices = this.dpLib.get_bloom_indices(key, 8, 36);
 
-    console.log('getting hint + send query');
     const hint = this.getHint();
-    console.time('querygen');
     const query = await this.dpLib.generate_query_batch_fast(indices);
-    console.timeEnd('querygen');
-    console.log('query len', query.length);
     const queryResult = this.getRawResponseMultipart(query);
     this.dpLib.load_hint(await hint);
     const result = await queryResult;
 
-    console.time('decoding');
-    const start = performance.now();
-    console.log('here', start);
     const decryptedResult = this.dpLib.decode_response_batch(result);
-    console.timeEnd('decoding');
-    console.log('done decoding', performance.now() - start);
-    console.log('decrypted');
-
-    console.log('got:', decryptedResult);
 
     let count = 0;
     for (let i = 0; i < decryptedResult.length; i++) {
@@ -263,16 +251,13 @@ export class Bucket {
     const b = new this(api, name, secretSeed);
     b.metadata = await b.api.meta(b.name);
     const scheme = b.metadata.pir_scheme;
-    console.log('got scheme:', scheme['scheme']);
     if (scheme['scheme'] && scheme['scheme'] === 'doublepir') {
       scheme['num_entries'] = '' + scheme['num_entries'];
       b.scheme = 'doublepir';
 
-      console.time('init');
       b.dpLib = await DoublePIRApiClient.initialize_client(
         JSON.stringify(scheme)
       );
-      console.timeEnd('init');
     } else {
       b.scheme = 'spiral';
       b.lib = new BlyssLib(JSON.stringify(scheme), b.secretSeed);

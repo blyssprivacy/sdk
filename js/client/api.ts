@@ -308,15 +308,9 @@ class Api {
     if (!targetUrl) targetUrl = this.urlFor(bucketName, READ_PATH);
 
     const prelim_result = await postData(this.apiKey, targetUrl, '', true);
-    console.log(prelim_result);
 
     // perform the long upload
-    const result = await postFormData(
-      prelim_result['url'],
-      prelim_result['fields'],
-      data
-    );
-    console.log(result);
+    await postFormData(prelim_result['url'], prelim_result['fields'], data);
 
     return await postData(
       this.apiKey,
