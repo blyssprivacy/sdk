@@ -6,6 +6,11 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./cjs": "./dist/cjs/index.cjs",
+    "./node": "./dist/cjs/index.cjs"
+  },
   "sideEffects": true,
   "homepage": "https://github.com/blyssprivacy/sdk#readme",
   "repository": {

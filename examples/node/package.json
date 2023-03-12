@@ -1,5 +1,4 @@
 {
-  "type": "module",
   "dependencies": {
     "@blyss/sdk": "latest"
   },

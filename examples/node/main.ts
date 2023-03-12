@@ -1,7 +1,13 @@
-import { Client } from '@blyss/sdk';
+import type { Client } from '@blyss/sdk';
+const blyss = require('@blyss/sdk/node');
+
+process.removeAllListeners('warning');
+if (typeof crypto === 'undefined') {
+  throw 'Requires Node 19+';
+}
 
 async function main() {
-  const client = new Client('<YOUR API KEY HERE>');
+  const client: Client = new blyss.Client('<YOUR API KEY HERE>');
 
   // Create the bucket
   const bucketName = 'state-capitals';
