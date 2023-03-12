@@ -6,6 +6,11 @@
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
+  "exports": {
+    ".": "./dist/index.js",
+    "./cjs": "./dist/cjs/index.cjs",
+    "./node": "./dist/cjs/index.cjs"
+  },
   "sideEffects": true,
   "homepage": "https://github.com/blyssprivacy/sdk#readme",
   "repository": {
@@ -39,6 +44,7 @@
     "@typescript-eslint/eslint-plugin": "^5.42.0",
     "@typescript-eslint/parser": "^5.42.0",
     "@wasm-tool/wasm-pack-plugin": "^1.6.0",
+    "copy-webpack-plugin": "^11.0.0",
     "eslint": "^8.26.0",
     "eslint-config-prettier": "^8.5.0",
     "eslint-plugin-prettier": "^4.2.1",

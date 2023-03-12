@@ -1,12 +1,14 @@
 import WasmPackPlugin from '@wasm-tool/wasm-pack-plugin';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import CopyPlugin from 'copy-webpack-plugin';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const dist = path.resolve(__dirname, 'dist');
 const distLib = path.resolve(dist, 'lib');
+const distCjs = path.resolve(dist, 'cjs');
 
 const config = {
   name: 'web',
@@ -81,4 +83,25 @@ const webSingleFileTarget = {
   }
 };
 
-export default [webTarget, webSingleFileTarget];
+const nodeTarget = {
+  ...config,
+  name: 'node',
+  dependencies: ['web'],
+  output: {
+    path: dist + '/cjs',
+    filename: 'index.cjs',
+    library: {
+      type: 'commonjs'
+    }
+  },
+  experiments: {
+    asyncWebAssembly: true
+  },
+  target: 'node',
+  plugins: [
+    new CopyPlugin({
+      patterns: [{ from: '../cjs-package.json', to: distCjs + '/package.json' }]
+    })
+  ]
+};
+export default [webTarget, webSingleFileTarget, nodeTarget];
