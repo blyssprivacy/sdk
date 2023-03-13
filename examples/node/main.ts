@@ -1,7 +1,5 @@
 import type { Client } from '@blyss/sdk';
 const blyss = require('@blyss/sdk/node');
-const fs = require('fs');
-
 process.removeAllListeners('warning');
 
 async function main() {

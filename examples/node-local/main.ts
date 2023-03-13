@@ -1,8 +1,11 @@
-import { Bucket } from '@blyss/sdk';
+import type { Bucket } from '@blyss/sdk';
+const blyss = require('@blyss/sdk/node');
+process.removeAllListeners('warning');
 
 async function main() {
-  // Connect to your bucket
-  const bucket = await Bucket.initializeLocal('http://localhost:8008');
+  const bucket: Bucket = await blyss.Bucket.initializeLocal(
+    'http://localhost:8008'
+  );
 
   // Write some data to it
   await bucket.write({
