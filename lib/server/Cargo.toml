@@ -1,0 +1,31 @@
+[package]
+name = "spiral-server"
+version = "0.1.0"
+authors = ["Samir Menon <menon.samir@gmail.com>"]
+edition = "2021"
+
+[[bin]]
+name = "server"
+path = "src/bin/server.rs"
+
+[features]
+default = []
+
+[dependencies]
+spiral-rs = { path = "../spiral-rs" }
+rand = { version = "0.8.5", features = ["small_rng"] }
+serde_json = "1.0"
+rayon = "1.5.2"
+rand_chacha = "0.3.1"
+
+actix-web = { version = "4.3.1", default_features = false, features = ["macros", "compress-gzip"] }
+actix-http = { version = "3.0.4" }
+futures = { version = "0.3" }
+uuid = { version = "1.0.0", features = ["v4"] }
+sha2 = "0.10.6"
+bzip2 = "0.4.4"
+base64 = "0.21.0"
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true

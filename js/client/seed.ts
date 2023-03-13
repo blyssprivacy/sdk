@@ -43,7 +43,13 @@ export function stringFromSeed(seed: Uint8Array): string {
 
 export function getRandomSeed(): string {
   const seed = new Uint8Array(SEED_BYTES);
-  crypto.getRandomValues(seed);
+  let cryptoRef;
+  if (typeof crypto === 'undefined') {
+    cryptoRef = require('node:crypto');
+  } else {
+    cryptoRef = crypto;
+  }
+  cryptoRef.getRandomValues(seed);
   return stringFromSeed(seed);
 }
 

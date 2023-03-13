@@ -137,18 +137,41 @@ async function postFormData(
 class Api {
   apiKey: string;
   serviceEndpoint: string;
+  bucketEndpoint: string | undefined;
 
-  constructor(apiKey: string, serviceEndpoint: string) {
+  constructor(
+    apiKey: string,
+    serviceEndpoint: string,
+    bucketEndpoint?: string
+  ) {
     this.apiKey = apiKey;
     this.serviceEndpoint = serviceEndpoint;
+    this.bucketEndpoint = bucketEndpoint;
+  }
+
+  /**
+   * Create an API client instance for a connection to a specific bucket.
+   *
+   * @param bucketEndpoint URL to a directly hosted bucket
+   */
+  static fromBucketEndpoint(bucketEndpoint: string): Api {
+    return new this('', '', bucketEndpoint);
   }
 
   private serviceUrlFor(path: string): string {
-    return this.serviceEndpoint + path;
+    if (this.bucketEndpoint) {
+      return this.bucketEndpoint + path;
+    } else {
+      return this.serviceEndpoint + path;
+    }
   }
 
   private urlFor(bucketName: string, path: string): string {
-    return this.serviceEndpoint + '/' + bucketName + path;
+    if (this.bucketEndpoint) {
+      return this.bucketEndpoint + path;
+    } else {
+      return this.serviceEndpoint + '/' + bucketName + path;
+    }
   }
 
   // Service methods
@@ -235,6 +258,15 @@ class Api {
    * @returns The setup data upload response, containing a UUID.
    */
   async setup(bucketName: string, data: Uint8Array): Promise<any> {
+    if (this.bucketEndpoint) {
+      return await postData(
+        this.apiKey,
+        this.urlFor(bucketName, SETUP_PATH),
+        data,
+        true
+      );
+    }
+
     const prelim_result = await postData(
       this.apiKey,
       this.urlFor(bucketName, SETUP_PATH),
@@ -254,7 +286,10 @@ class Api {
    * @param bucketName The name of the bucket to get the hint data for.
    */
   async hint(bucketName: string): Promise<Uint8Array> {
-    const url = BLYSS_HINT_URL_PREFIX + bucketName + '.hint';
+    let url = BLYSS_HINT_URL_PREFIX + bucketName + '.hint';
+    if (this.bucketEndpoint) {
+      url = this.urlFor(bucketName, HINT_PATH);
+    }
     const result = await getData(null, url, false);
     return result;
   }
@@ -306,6 +341,15 @@ class Api {
     targetUrl?: string
   ): Promise<Uint8Array> {
     if (!targetUrl) targetUrl = this.urlFor(bucketName, READ_PATH);
+
+    if (this.bucketEndpoint) {
+      return await postData(
+        this.apiKey,
+        this.urlFor(bucketName, SETUP_PATH),
+        data,
+        true
+      );
+    }
 
     const prelim_result = await postData(this.apiKey, targetUrl, '', true);
 

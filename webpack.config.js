@@ -48,6 +48,9 @@ const config = {
   resolve: {
     extensions: ['.tsx', '.ts', '.js']
   },
+  externals: {
+    'node:crypto': 'commonjs2 node:crypto'
+  },
   devServer: {
     static: dist
   },
@@ -94,6 +97,7 @@ const nodeTarget = {
       type: 'commonjs'
     }
   },
+  externals: {},
   experiments: {
     asyncWebAssembly: true
   },

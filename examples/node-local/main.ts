@@ -1,21 +1,11 @@
-import type { Client } from '@blyss/sdk';
+import type { Bucket } from '@blyss/sdk';
 const blyss = require('@blyss/sdk/node');
 process.removeAllListeners('warning');
 
 async function main() {
-  const client: Client = new blyss.Client('<YOUR API KEY HERE>');
-
-  // Create the bucket
-  const bucketName = 'global.wc-v1';
-  if (!(await client.exists(bucketName))) {
-    console.log('creating...');
-    await client.create(bucketName, true, {
-      keyStoragePolicy: 'none'
-    });
-  }
-
-  // Connect to your bucket
-  const bucket = await client.connect(bucketName);
+  const bucket: Bucket = await blyss.Bucket.initializeLocal(
+    'http://localhost:8008'
+  );
 
   // Write some data to it
   await bucket.write({

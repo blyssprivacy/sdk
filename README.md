@@ -30,27 +30,35 @@
   </a>
 </h4>
 
+The [Blyss SDK](https://blyss.dev) lets you use homomorphic encryption to [retrieve information privately](https://blintzbase.com/posts/pir-and-fhe-from-scratch/). With it, you can build new kinds of privacy-preserving services, like [private password breach checking](https://playground.blyss.dev/passwords/), [private nameserver resolution](https://sprl.it/), and even [private Wikipedia](https://spiralwiki.com/).
 
-The [Blyss SDK](https://blyss.dev) lets you use homomorphic encryption to make private retrievals from Blyss buckets. This can enable new privacy-preserving apps, like [private nameserver resolution](https://sprl.it/), [private wallets](https://btc.blyss.dev/), and even [private Wikipedia](https://spiralwiki.com/).
-
-Get an API key by [signing up](https://blyss.dev). Detailed documentation is at [docs.blyss.dev](https://docs.blyss.dev).
+You can get an API key by [signing up](https://blyss.dev), or run a server locally. Detailed documentation is at [docs.blyss.dev](https://docs.blyss.dev).
 
 > **Warning**
-> The SDK has not yet been audited or reviewed, and the public Blyss service is still in beta. Data stored in Blyss should not be considered durable. [Contact us](mailto:founders@blyss.dev) for access to a production-ready service.
+> The SDK has not yet been security reviewed, and the public Blyss service is still in beta. [Contact us](mailto:founders@blyss.dev) for access to a production-ready service.
 
-> _Looking for Spiral?_
-> Our new name is Blyss. The core Rust cryptographic library that this repo started as is now in `lib/spiral-rs`.
+## Quick start (cloud)
 
-## Quick start
+You can quickly try using the SDK with our managed service without downloading anything.
 
-You can quickly try using the SDK without downloading anything. The example code shows how to use Blyss buckets to perform private contact intersection.
-
-1. Get an API key by [signing up](https://blyss.dev).
-2. Open [this CodeSandbox](https://codesandbox.io/s/blyss-contact-intersection-example-7qr6r5) and enter your API key where it says `<YOUR API KEY HERE>`. This lets you try using the SDK in your browser.
+1. Get an API key by [signing up here](https://blyss.dev).
+2. Open [this StackBlitz](https://stackblitz.com/edit/blyss-private-contact-intersection) and enter your API key where it says `<YOUR API KEY HERE>`.
 3. Try adding users to the service using the "Add a user" button. As you add more users, the service will _privately_ intersect each new users's contacts and the already existing users.
    Every user's list of contacts stays completely private using homomorphic encryption: it never leaves their device unencrypted.
 
-If you prefer a simpler example using vanilla JS, check out [this CodePen](https://codepen.io/blyssprivacy/pen/qByMJwr?editors=0010&layout=left).
+We also have [a simpler example using vanilla JS](https://codepen.io/blyssprivacy/pen/qByMJwr?editors=0010&layout=left).
+
+## Quick start (local)
+
+You can also use the Blyss SDK completely locally. 
+
+1. Clone this repo with `git clone git@github.com:blyssprivacy/sdk.git`.
+2. Run the server by entering `lib/server` and running `cargo run --release`. The server will run on `localhost:8008` by default.
+3. Run the client by entering `examples/node-local` and running `npx ts-node main.ts`. This will perform some writes and then a private read to your bucket.
+
+## Installing as a package
+
+To use the Blyss SDK in an existing TypeScript project, install it with `npm install @blyss/sdk`. Then, import the client with `import { Client } from '@blyss/sdk';`. If you're using SDK in Node, and prefer not to use ESM, you can instead import it as `const blyss = require('@blyss/sdk/node')`.
 
 ## Examples
 
@@ -74,7 +82,7 @@ The React example shows how to use the Blyss SDK in modern client-side JS. It al
 
 ### Node
 
-The Node.js example shows how to use the Blyss SDK in server-side JS. Node 19+ and ESM support is required.
+The Node.js example shows how to use the Blyss SDK in server-side JS. Node 18+ is required.
 
 1. Enter `examples/node`, and run `npm install`.
 2. Edit `main.ts` to use your API key.
@@ -82,17 +90,7 @@ The Node.js example shows how to use the Blyss SDK in server-side JS. Node 19+ a
 
 ### Python
 
-The Blyss SDK for Python is still in development. To build the Python library:
-
-1. Enter `python/` and run `python -m venv .env` (on macOS, use `python3 -m venv .env`)
-2. Run `source .env/bin/activate`
-3. Run `pip install maturin`
-4. Run `maturin develop`
-
-This will install the SDK locally as `blyss`. You can now import `blyss` in scripts you run from this virtual environment. To run the Python example:
-
-1. Enter `examples/python`
-2. Run `python main.py`
+The Blyss SDK for Python is still in development.
 
 ## Documentation
 
@@ -110,13 +108,16 @@ Steps to building the SDK:
 2. Run `npm install`.
 3. Run `npm run build`.
 
-This will completely build the SDK, including the core Rust library in `lib/spiral-rs`.
+This will build the complete SDK, including the core Rust libraries in `lib/spiral-rs` and `lib/doublepir`
 
 The SDK is structured as:
 
-1. `lib/spiral-rs/`, a Rust crate containing the core cryptographic implementation of the [Spiral PIR scheme](https://eprint.iacr.org/2022/368.pdf).
+1. `lib/`,
+   - `lib/server/`, a Rust project containing the open-source Blyss server.
+   - `lib/spiral-rs/`, a Rust crate containing the core cryptographic implementation of the [Spiral PIR scheme](https://eprint.iacr.org/2022/368).
+   - `lib/doublepir/`, a Rust crate containing the core cryptographic implementation of the [DoublePIR scheme](https://eprint.iacr.org/2022/949).
 2. `js/`, the TypeScript code that implements the user-facing Blyss SDK.
-   - `js/bridge/`, a Rust "bridge" crate that exposes key functionality from `spiral-rs` to the TypeScript code.
+   - `js/bridge/`, a Rust "bridge" crate that exposes key functionality from `spiral-rs` and `doublepir` to the TypeScript code.
 3. `python/`, the Python version of the SDK (still in development)
    - `python/src/lib.rs`, another Rust "bridge" crate that exposes key functionality from `spiral-rs` to the Python code.
 

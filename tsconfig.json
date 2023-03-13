@@ -11,6 +11,7 @@
     "declaration": true,
     "declarationDir": "dist",
     "declarationMap": true,
+    "moduleResolution": "node"
   },
   "include": ["./js/**/*"],
   "exclude": [
