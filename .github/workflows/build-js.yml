@@ -35,6 +35,10 @@ jobs:
       - name: Run tests
         run: |
           npm test
+
+      - name: Run end-to-end tests
+        run: |
+          npm run e2e-tests
           
       - name: Upload single-file bundle
         uses: actions/upload-artifact@v3

@@ -96,7 +96,15 @@ export class Bucket {
   }
 
   private async getEndResult(key: string, queryResult: Uint8Array) {
-    const decryptedResult = this.lib.decodeResponse(queryResult);
+    let decryptedResult = null;
+    try {
+      decryptedResult = this.lib.decodeResponse(queryResult);
+    } catch (e) {
+      console.error('decryption error', e);
+    }
+    if (decryptedResult === null) {
+      return null;
+    }
 
     let decompressedResult = null;
     try {
@@ -263,6 +271,23 @@ export class Bucket {
       b.lib = new BlyssLib(JSON.stringify(scheme), b.secretSeed);
     }
     return b;
+  }
+
+  /**
+   * Initialize a client for a single existing Blyss bucket, connecting directly
+   * to it via a URL.
+   *
+   * @param {string} url - A target bucket endpoint URL to send all underlying
+   *   API calls to.
+   * @param {string} [secretSeed] - An optional secret seed to initialize the
+   *   client with. A random one will be generated if not supplied.
+   */
+  static async initializeLocal(
+    url: string,
+    secretSeed?: string
+  ): Promise<Bucket> {
+    const api = Api.fromBucketEndpoint(url);
+    return await this.initialize(api, '', secretSeed);
   }
 
   /**

@@ -12,8 +12,14 @@ import initWasm, {
 } from '../../dist/lib/lib';
 import wasmData from '../../dist/lib/lib_bg.wasm';
 
+if (typeof crypto === 'undefined')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  (globalThis as any).crypto = (require('node:crypto') as any).webcrypto;
+
 (async function () {
-  const result = await initWasm(wasmData);
+  let imported: any = initWasm;
+  if (typeof imported !== 'function') imported = function () {};
+  const result = await imported(wasmData);
   if (typeof window !== 'undefined') {
     (window as any).wasmInit = result;
   }
@@ -61,9 +67,6 @@ async function aes_derive_fast(
   );
   const outRound = new Uint8Array(wasmInit.memory.buffer, dst, len);
   outRound.set(new Uint8Array(val.slice(0, len)));
-
-  // console.log(`idx: ${keyIdx}`);
-  // console.log(new Uint8Array(wasmInit.memory.buffer, dst, 128));
 }
 
 let windowObj: any;
