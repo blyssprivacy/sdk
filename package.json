@@ -35,7 +35,7 @@
     "build": "webpack",
     "start": "webpack-dev-server --open",
     "test": "jest",
-    "e2e-tests": "cd lib/server && cargo build --profile release-with-debug && cd ../../e2e-tests && npx ts-node main.ts ../lib/server/target/release-with-debug/server",
+    "e2e-tests": "npm link && cd lib/server && cargo build --release && cd ../../e2e-tests && npm link @blyss/sdk && npx ts-node main.ts ../lib/server/target/release/server",
     "lint": "eslint . --ext .ts"
   },
   "devDependencies": {
