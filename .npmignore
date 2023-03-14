@@ -8,6 +8,7 @@ js/tests/
 js/bridge/
 lib/
 docs/
+e2e-tests/
 
 .eslintrc.json
 .prettierrc.json
@@ -15,3 +16,4 @@ docs/
 jest.config.js
 tsconfig.json
 webpack.config.js
+cjs-package.json
