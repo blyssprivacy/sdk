@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "@blyss/sdk": "latest"
+    "@blyss/sdk": "0.1.7-alpha.1"
   },
   "devDependencies": {
     "ts-node": "^10.9.1",
