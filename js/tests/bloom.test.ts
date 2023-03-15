@@ -1,5 +1,9 @@
 import { bloomLookup, bloomWrite, bloomInit } from '../data/bloom';
 
+if (typeof crypto === 'undefined')
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  (globalThis as any).crypto = (require('node:crypto') as any).webcrypto;
+
 describe('bloom filter write + lookup', () => {
   it.each([
     [10, 24, ['a', 'b', 'c']],
