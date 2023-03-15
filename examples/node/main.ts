@@ -6,7 +6,7 @@ async function main() {
   const client: Client = new blyss.Client('<YOUR API KEY HERE>');
 
   // Create the bucket
-  const bucketName = 'global.wc-v1';
+  const bucketName = 'state-capitals';
   if (!(await client.exists(bucketName))) {
     console.log('creating...');
     await client.create(bucketName, true, {
