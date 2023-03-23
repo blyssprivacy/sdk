@@ -4,11 +4,14 @@ build-backend = "maturin"
 
 [project]
 name = "blyss"
-requires-python = ">=3.7"
+requires-python = ">=3.8"
 classifiers = [
     "Programming Language :: Rust",
     "Programming Language :: Python :: Implementation :: CPython",
     "Programming Language :: Python :: Implementation :: PyPy",
 ]
-
-
+dependencies = [
+    "requests",
+    "httpx",
+]
+dynamic = ["version"]
