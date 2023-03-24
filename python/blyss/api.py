@@ -130,7 +130,7 @@ async def _async_post_data(
         headers["Content-Encoding"] = "gzip"
 
     async with httpx.AsyncClient(timeout=httpx.Timeout(5, read=None)) as client:
-        r = await client.post(url, data=data, headers=headers)
+        r = await client.post(url, content=data, headers=headers)
 
     _check_http_error(r)
     if decode_json:

@@ -12,6 +12,7 @@ import json
 import base64
 import bz2
 import time
+import asyncio
 
 
 def _chunk_parser(raw_data: bytes) -> Iterator[bytes]:
@@ -111,9 +112,7 @@ class Bucket:
             retrievals.append(output)
         return retrievals
 
-    def _private_read(
-        self, keys: list[str]
-    ) -> list[tuple[bytes, Optional[dict[Any, Any]]]]:
+    def _private_read(self, keys: list[str]) -> list[bytes]:
         """Performs the underlying private retrieval.
 
         Args:
@@ -248,7 +247,8 @@ class AsyncBucket(Bucket):
         super().__init__(*args, **kwargs)
 
     async def write(self, kv_pairs: dict[str, bytes]):
-        """Asynchronously writes the supplied key-value pair(s) into the bucket.
+        """
+        Asynchronously writes the supplied key-value pair(s) into the bucket.
 
         Args:
             kv_pairs:
@@ -265,6 +265,49 @@ class AsyncBucket(Bucket):
             kv_items.append(fmt)
         # single call to API endpoint
         await self.api.async_write(self.name, json.dumps(kv_items).encode("utf-8"))
+
+    async def write_autotune(self, kv_pairs: dict[str, bytes]):
+        _MAX_PAYLOAD = 2**21  # 2 MiB
+
+        # 1. Sort keys by row index
+        keys_and_indices = [(k, self.lib.get_row(k)) for k in kv_pairs.keys()]
+        keys_and_indices.sort(key=lambda x: x[1])
+
+        # 2. Prepare chunks of items, where each chunk is less than the maximum payload size.
+        # each item is a JSON-ready structure.
+        kv_chunks: list[list[dict[str, str]]] = []
+        current_chunk: list[dict[str, str]] = []
+        current_chunk_size = 0
+        for key, _ in keys_and_indices:
+            value = kv_pairs[key]
+            value_str = base64.b64encode(value).decode("utf-8")
+            fmt = {
+                "key": key,
+                "value": value_str,
+                "content-type": "application/octet-stream",
+            }
+            item_size = int(48 + len(key) + len(value_str))
+            if current_chunk_size + item_size > _MAX_PAYLOAD:
+                kv_chunks.append(current_chunk)
+                current_chunk = [fmt]
+                current_chunk_size = item_size
+            else:
+                current_chunk.append(fmt)
+                current_chunk_size += item_size
+
+        print(f"chunks: {len(kv_chunks)}")
+
+        # 3. Make one write call per chunk, while respecting a max concurrency limit.
+        MAX_CONCURRENCY = 3
+        for i in range(0, len(kv_chunks), MAX_CONCURRENCY):
+            concurrent_chunks = kv_chunks[i : i + MAX_CONCURRENCY]
+            _tasks = []
+            for c in concurrent_chunks:
+                t = asyncio.create_task(
+                    self.api.async_write(self.name, json.dumps(c).encode("utf-8"))
+                )
+                _tasks.append(t)
+            await asyncio.gather(*_tasks)
 
     async def private_read(self, keys: list[str]) -> list[bytes]:
         if not self.public_uuid or not await self._async_check(self.public_uuid):
