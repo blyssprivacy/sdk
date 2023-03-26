@@ -83,6 +83,58 @@ class Bucket:
             else:
                 raise e
 
+    def _split_into_chunks(
+        self, kv_pairs: dict[str, bytes]
+    ) -> list[list[dict[str, str]]]:
+        _MAX_PAYLOAD = 2**21  # 2 MiB
+
+        # 1. Bin keys by row index
+        keys_by_index: dict[int, list[str]] = {}
+        for k in kv_pairs.keys():
+            i = self.lib.get_row(k)
+            if i in keys_by_index:
+                keys_by_index[i].append(k)
+            else:
+                keys_by_index[i] = [k]
+
+        # 2. Prepare chunks of items, where each is a JSON-ready structure.
+        # Each chunk is less than the maximum payload size, and guarantees
+        # zero overlap of rows across chunks.
+        kv_chunks: list[list[dict[str, str]]] = []
+        current_chunk: list[dict[str, str]] = []
+        current_chunk_size = 0
+        sorted_indices = sorted(keys_by_index.keys())
+        for i in sorted_indices:
+            keys = keys_by_index[i]
+            # prepare all keys in this row
+            row = []
+            row_size = 0
+            for key in keys:
+                value = kv_pairs[key]
+                value_str = base64.b64encode(value).decode("utf-8")
+                fmt = {
+                    "key": key,
+                    "value": value_str,
+                    "content-type": "application/octet-stream",
+                }
+                row.append(fmt)
+                row_size += int(48 + len(key) + len(value_str))
+
+            # if the new row doesn't fit into the current chunk, start a new one
+            if current_chunk_size + row_size > _MAX_PAYLOAD:
+                kv_chunks.append(current_chunk)
+                current_chunk = row
+                current_chunk_size = row_size
+            else:
+                current_chunk.extend(row)
+                current_chunk_size += row_size
+
+        # add the last chunk
+        if len(current_chunk) > 0:
+            kv_chunks.append(current_chunk)
+
+        return kv_chunks
+
     def _generate_query_stream(self, keys: list[str]) -> bytes:
         # generate encrypted queries
         queries: list[bytes] = [
@@ -247,84 +299,18 @@ class AsyncBucket(Bucket):
         super().__init__(*args, **kwargs)
 
     async def write(self, kv_pairs: dict[str, bytes]):
-        """
-        Asynchronously writes the supplied key-value pair(s) into the bucket.
+        from tqdm.asyncio import tqdm
 
-        Args:
-            kv_pairs:
-                A dictionary containing the key-value pairs to write.
-                Keys must be UTF-8 strings, and values may be arbitrary bytes.
-        """
-        kv_items: list[dict[str, str]] = []
-        for key, value in kv_pairs.items():
-            fmt = {
-                "key": key,
-                "value": base64.b64encode(value).decode("utf-8"),
-                "content-type": "application/octet-stream",
-            }
-            kv_items.append(fmt)
-        # single call to API endpoint
-        await self.api.async_write(self.name, json.dumps(kv_items).encode("utf-8"))
+        kv_chunks = self._split_into_chunks(kv_pairs)
+        # Make one write call per chunk, while respecting a max concurrency limit.
+        sem = asyncio.Semaphore(10)
 
-    async def write_autotune(self, kv_pairs: dict[str, bytes]):
-        _MAX_PAYLOAD = 2**21  # 2 MiB
+        async def _paced_writer(chunk):
+            async with sem:
+                await self.api.async_write(self.name, json.dumps(chunk))
 
-        # 1. Bin keys by row index
-        keys_by_index: dict[int, list[str]] = {}
-        for k in kv_pairs.keys():
-            i = self.lib.get_row(k)
-            if i in keys_by_index:
-                keys_by_index[i].append(k)
-            else:
-                keys_by_index[i] = [k]
-
-        # 2. Prepare chunks of items, where each is a JSON-ready structure.
-        # Each chunk is less than the maximum payload size, and guarantees
-        # zero overlap of rows across chunks.
-        kv_chunks: list[list[dict[str, str]]] = []
-        current_chunk: list[dict[str, str]] = []
-        current_chunk_size = 0
-        sorted_indices = sorted(keys_by_index.keys())
-        for i in sorted_indices:
-            keys = keys_by_index[i]
-            # prepare all keys in this row
-            row = []
-            row_size = 0
-            for key in keys:
-                value = kv_pairs[key]
-                value_str = base64.b64encode(value).decode("utf-8")
-                fmt = {
-                    "key": key,
-                    "value": value_str,
-                    "content-type": "application/octet-stream",
-                }
-                row.append(fmt)
-                row_size += int(48 + len(key) + len(value_str))
-
-            # if the new row doesn't fit into the current chunk, start a new one
-            if current_chunk_size + row_size > _MAX_PAYLOAD:
-                kv_chunks.append(current_chunk)
-                current_chunk = row
-                current_chunk_size = row_size
-            else:
-                current_chunk.extend(row)
-                current_chunk_size += row_size
-
-        # add the last chunk
-        if len(current_chunk) > 0:
-            kv_chunks.append(current_chunk)
-
-        # 3. Make one write call per chunk, while respecting a max concurrency limit.
-        MAX_CONCURRENCY = 3
-        for i in range(0, len(kv_chunks), MAX_CONCURRENCY):
-            concurrent_chunks = kv_chunks[i : i + MAX_CONCURRENCY]
-            _tasks = []
-            for c in concurrent_chunks:
-                t = asyncio.create_task(
-                    self.api.async_write(self.name, json.dumps(c).encode("utf-8"))
-                )
-                _tasks.append(t)
-            await asyncio.gather(*_tasks)
+        _tasks = [asyncio.create_task(_paced_writer(c)) for c in kv_chunks]
+        await tqdm.gather(*_tasks)
 
     async def private_read(self, keys: list[str]) -> list[bytes]:
         if not self.public_uuid or not await self._async_check(self.public_uuid):

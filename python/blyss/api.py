@@ -116,13 +116,22 @@ def _post_form_data(url: str, fields: dict[Any, Any], data: bytes):
 
 
 async def _async_post_data(
-    api_key: str, url: str, data: bytes, compress: bool = True, decode_json: bool = True
+    api_key: str,
+    url: str,
+    data: Union[str, bytes],
+    compress: bool = True,
+    decode_json: bool = True,
 ) -> Any:
     """Perform an async HTTP POST request, returning a JSON-parsed dict response"""
     headers = {
-        "Content-Type": "application/octet-stream",
         "x-api-key": api_key,
     }
+    if type(data) == str:
+        headers["Content-Type"] = "application/json"
+        data = data.encode("utf-8")
+    else:
+        headers["Content-Type"] = "application/octet-stream"
+    assert type(data) == bytes
 
     if compress:
         # apply gzip compression to data before sending
@@ -132,7 +141,7 @@ async def _async_post_data(
     async with httpx.AsyncClient(timeout=httpx.Timeout(5, read=None)) as client:
         r = await client.post(url, content=data, headers=headers)
 
-    _check_http_error(r)
+    _check_http_error(r)  # type: ignore
     if decode_json:
         return r.json()
     else:
@@ -253,8 +262,8 @@ class API:
         """Write some data to this bucket."""
         _post_data(self.api_key, self._url_for(bucket_name, WRITE_PATH), data)
 
-    async def async_write(self, bucket_name: str, data: bytes):
-        """Write some data to this bucket."""
+    async def async_write(self, bucket_name: str, data: str):
+        """Write JSON payload to this bucket."""
         await _async_post_data(
             self.api_key, self._url_for(bucket_name, WRITE_PATH), data, decode_json=True
         )
