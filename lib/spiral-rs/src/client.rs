@@ -181,9 +181,11 @@ impl<'a> PublicParameters<'a> {
             let seed = self.seed.as_ref().unwrap();
             data.extend(seed);
         }
-        for v in self.to_raw().iter() {
+        for (i, v) in self.to_raw().iter().enumerate() {
             if v.is_some() {
+                let before = data.len();
                 serialize_vec_polymatrix_for_rng(&mut data, v.as_ref().unwrap());
+                println!("{}: {}", i, data.len() - before);
             }
         }
         data
@@ -205,9 +207,17 @@ impl<'a> PublicParameters<'a> {
             let mut v_expansion_left = new_vec_raw(params, params.g(), 2, params.t_exp_left);
             idx += deserialize_vec_polymatrix_rng(&mut v_expansion_left, &data[idx..], &mut rng);
 
-            let mut v_expansion_right =
-                new_vec_raw(params, params.stop_round() + 1, 2, params.t_exp_right);
-            idx += deserialize_vec_polymatrix_rng(&mut v_expansion_right, &data[idx..], &mut rng);
+            let mut v_expansion_right = v_expansion_left.clone();
+            if params.t_exp_right != params.t_exp_left {
+                let mut v_expansion_right_tmp =
+                    new_vec_raw(params, params.stop_round() + 1, 2, params.t_exp_right);
+                idx += deserialize_vec_polymatrix_rng(
+                    &mut v_expansion_right_tmp,
+                    &data[idx..],
+                    &mut rng,
+                );
+                v_expansion_right = v_expansion_right_tmp;
+            }
 
             let mut v_conversion = new_vec_raw(params, 1, 2, 2 * params.t_conv);
             _ = deserialize_vec_polymatrix_rng(&mut v_conversion, &data[idx..], &mut rng);
@@ -534,12 +544,17 @@ impl<'a> Client<'a> {
                 &mut rng,
                 &mut rng_pub,
             ));
-            pp.v_expansion_right = Some(self.generate_expansion_params(
-                params.stop_round() + 1,
-                params.t_exp_right,
-                &mut rng,
-                &mut rng_pub,
-            ));
+
+            if params.t_exp_right != params.t_exp_left {
+                pp.v_expansion_right = Some(self.generate_expansion_params(
+                    params.stop_round() + 1,
+                    params.t_exp_right,
+                    &mut rng,
+                    &mut rng_pub,
+                ));
+            } else {
+                pp.v_expansion_right = None;
+            }
 
             // Params for converison
             let g_conv = build_gadget(params, 2, 2 * params.t_conv);

@@ -545,7 +545,7 @@ pub fn expand_query<'a>(
 
     let v_conversion = &public_params.v_conversion.as_ref().unwrap()[0];
     let v_w_left = public_params.v_expansion_left.as_ref().unwrap();
-    let v_w_right = public_params.v_expansion_right.as_ref().unwrap();
+    let v_w_right = public_params.v_expansion_right.as_ref().unwrap_or(v_w_left);
     let v_neg1 = params.get_v_neg1();
 
     let mut v_reg_inp = Vec::with_capacity(dim0);
@@ -924,6 +924,7 @@ mod test {
         let mut client = Client::init(&params);
 
         let public_params = client.generate_keys();
+        println!("pp size: {}", public_params.serialize().len());
         let query = client.generate_query(target_idx);
 
         let (corr_item, db) = generate_random_db_and_get_item(params, target_idx);
@@ -952,21 +953,21 @@ mod test {
     fn larger_full_protocol_is_correct() {
         let cfg_expand = r#"
             {
-            'n': 2,
-            'nu_1': 10,
-            'nu_2': 6,
-            'p': 512,
-            'q2_bits': 21,
-            's_e': 85.83255142749422,
-            't_gsw': 10,
-            't_conv': 4,
-            't_exp_left': 16,
-            't_exp_right': 56,
-            'instances': 1,
-            'db_item_size': 9000 }
+                "n": 3,
+                "nu_1": 9,
+                "nu_2": 5,
+                "p": 256,
+                "q2_bits": 20,
+                "t_gsw": 9,
+                "t_conv": 4,
+                "t_exp_left": 8,
+                "t_exp_right": 8,
+                "instances": 2,
+                "db_item_size": 36864,
+                "db_num_items": 16384
+            }
         "#;
         let cfg = cfg_expand;
-        let cfg = cfg.replace("'", "\"");
         let params = params_from_json(&cfg);
 
         full_protocol_is_correct_for_params(&params);
