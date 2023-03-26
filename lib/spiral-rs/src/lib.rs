@@ -1,6 +1,7 @@
 pub mod aligned_memory;
 pub mod arith;
 pub mod discrete_gaussian;
+pub mod noise_estimate;
 pub mod number_theory;
 pub mod util;
 
