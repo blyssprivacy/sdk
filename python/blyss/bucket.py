@@ -269,33 +269,50 @@ class AsyncBucket(Bucket):
     async def write_autotune(self, kv_pairs: dict[str, bytes]):
         _MAX_PAYLOAD = 2**21  # 2 MiB
 
-        # 1. Sort keys by row index
-        keys_and_indices = [(k, self.lib.get_row(k)) for k in kv_pairs.keys()]
-        keys_and_indices.sort(key=lambda x: x[1])
+        # 1. Bin keys by row index
+        keys_by_index: dict[int, list[str]] = {}
+        for k in kv_pairs.keys():
+            i = self.lib.get_row(k)
+            if i in keys_by_index:
+                keys_by_index[i].append(k)
+            else:
+                keys_by_index[i] = [k]
 
-        # 2. Prepare chunks of items, where each chunk is less than the maximum payload size.
-        # each item is a JSON-ready structure.
+        # 2. Prepare chunks of items, where each is a JSON-ready structure.
+        # Each chunk is less than the maximum payload size, and guarantees
+        # zero overlap of rows across chunks.
         kv_chunks: list[list[dict[str, str]]] = []
         current_chunk: list[dict[str, str]] = []
         current_chunk_size = 0
-        for key, _ in keys_and_indices:
-            value = kv_pairs[key]
-            value_str = base64.b64encode(value).decode("utf-8")
-            fmt = {
-                "key": key,
-                "value": value_str,
-                "content-type": "application/octet-stream",
-            }
-            item_size = int(48 + len(key) + len(value_str))
-            if current_chunk_size + item_size > _MAX_PAYLOAD:
-                kv_chunks.append(current_chunk)
-                current_chunk = [fmt]
-                current_chunk_size = item_size
-            else:
-                current_chunk.append(fmt)
-                current_chunk_size += item_size
+        sorted_indices = sorted(keys_by_index.keys())
+        for i in sorted_indices:
+            keys = keys_by_index[i]
+            # prepare all keys in this row
+            row = []
+            row_size = 0
+            for key in keys:
+                value = kv_pairs[key]
+                value_str = base64.b64encode(value).decode("utf-8")
+                fmt = {
+                    "key": key,
+                    "value": value_str,
+                    "content-type": "application/octet-stream",
+                }
+                row.append(fmt)
+                row_size += int(48 + len(key) + len(value_str))
 
-        print(f"chunks: {len(kv_chunks)}")
+            # if the new row doesn't fit into the current chunk, start a new one
+            if current_chunk_size + row_size > _MAX_PAYLOAD:
+                kv_chunks.append(current_chunk)
+                current_chunk = row
+                current_chunk_size = row_size
+            else:
+                current_chunk.extend(row)
+                current_chunk_size += row_size
+
+        # add the last chunk
+        if len(current_chunk) > 0:
+            kv_chunks.append(current_chunk)
 
         # 3. Make one write call per chunk, while respecting a max concurrency limit.
         MAX_CONCURRENCY = 3
