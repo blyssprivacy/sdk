@@ -86,7 +86,7 @@ class Bucket:
     def _split_into_chunks(
         self, kv_pairs: dict[str, bytes]
     ) -> list[list[dict[str, str]]]:
-        _MAX_PAYLOAD = 2**21  # 2 MiB
+        _MAX_PAYLOAD = 5 * 2**20  # 5 MiB
 
         # 1. Bin keys by row index
         keys_by_index: dict[int, list[str]] = {}
@@ -118,7 +118,7 @@ class Bucket:
                     "content-type": "application/octet-stream",
                 }
                 row.append(fmt)
-                row_size += int(48 + len(key) + len(value_str))
+                row_size += int(72 + len(key) + len(value_str))
 
             # if the new row doesn't fit into the current chunk, start a new one
             if current_chunk_size + row_size > _MAX_PAYLOAD:
@@ -298,19 +298,18 @@ class AsyncBucket(Bucket):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    async def write(self, kv_pairs: dict[str, bytes]):
-        from tqdm.asyncio import tqdm
-
+    async def write(self, kv_pairs: dict[str, bytes], MAX_CONCURRENCY=8):
+        # Split the key-value pairs into chunks not exceeding max payload size.
         kv_chunks = self._split_into_chunks(kv_pairs)
         # Make one write call per chunk, while respecting a max concurrency limit.
-        sem = asyncio.Semaphore(10)
+        sem = asyncio.Semaphore(MAX_CONCURRENCY)
 
         async def _paced_writer(chunk):
             async with sem:
                 await self.api.async_write(self.name, json.dumps(chunk))
 
         _tasks = [asyncio.create_task(_paced_writer(c)) for c in kv_chunks]
-        await tqdm.gather(*_tasks)
+        await asyncio.gather(*_tasks)
 
     async def private_read(self, keys: list[str]) -> list[bytes]:
         if not self.public_uuid or not await self._async_check(self.public_uuid):
