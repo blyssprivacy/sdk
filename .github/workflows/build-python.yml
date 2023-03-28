@@ -1,3 +1,5 @@
+name: Build Python SDK
+
 on:
   push:
     branches: [ "main" ]
