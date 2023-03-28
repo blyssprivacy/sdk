@@ -90,7 +90,9 @@ The Node.js example shows how to use the Blyss SDK in server-side JS. Node 18+ i
 
 ### Python
 
-The Blyss SDK for Python is still in development.
+1. Enter `examples/python`.
+2. Run `pip install blyss`.
+3. Run `python main.py`.
 
 ## Documentation
 
@@ -100,9 +102,9 @@ All documentation is available at [docs.blyss.dev](https://docs.blyss.dev). You 
 
 Please feel free to open issues and pull requests! For bugs, try to provide as much context as possible. We are also always open to documentation contributions.
 
-## Building
+## Building from source
 
-Steps to building the SDK:
+### JavaScript / Node
 
 1. Install Node with [nvm](https://github.com/nvm-sh/nvm#installing-and-updating), Rust with [rustup](https://rustup.rs/), and [wasm-pack](https://rustwasm.github.io/wasm-pack/installer/).
 2. Run `npm install`.
@@ -110,7 +112,14 @@ Steps to building the SDK:
 
 This will build the complete SDK, including the core Rust libraries in `lib/spiral-rs` and `lib/doublepir`
 
-The SDK is structured as:
+### Python
+
+Requires python 3.8+.
+1. Run `pip install .` in `python`.
+
+## Repository Map
+
+The Blyss SDK is structured as:
 
 1. `lib/`,
    - `lib/server/`, a Rust project containing the open-source Blyss server.
@@ -118,7 +127,7 @@ The SDK is structured as:
    - `lib/doublepir/`, a Rust crate containing the core cryptographic implementation of the [DoublePIR scheme](https://eprint.iacr.org/2022/949).
 2. `js/`, the TypeScript code that implements the user-facing Blyss SDK.
    - `js/bridge/`, a Rust "bridge" crate that exposes key functionality from `spiral-rs` and `doublepir` to the TypeScript code.
-3. `python/`, the Python version of the SDK (still in development)
+3. `python/`, the Python version of the SDK.
    - `python/src/lib.rs`, another Rust "bridge" crate that exposes key functionality from `spiral-rs` to the Python code.
 
 ## License
