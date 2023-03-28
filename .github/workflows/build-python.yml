@@ -1,10 +1,10 @@
 on:
   push:
-    branches:
-      - main
+    branches: [ "main" ]
     tags:
       - '*'
   pull_request:
+    branches: [ "main" ]
   workflow_dispatch:
 
 permissions:
@@ -101,7 +101,7 @@ jobs:
   publish:
     name: Publish
     runs-on: ubuntu-latest
-    if: github.event_name == 'release' && github.event.action == 'action'
+    if: github.event_name == 'release' && github.event.action == 'published'
     needs: [linux, macos, windows, sdist]
     steps:
       - uses: actions/download-artifact@v3
