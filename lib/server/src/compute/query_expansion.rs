@@ -408,7 +408,7 @@ mod test {
         let test_ct = client.encrypt_matrix_reg(&sigma.ntt(), &mut rng, &mut rng_pub);
 
         let v_w_left = public_params.v_expansion_left.unwrap();
-        let v_w_right = public_params.v_expansion_right.unwrap();
+        let v_w_right = public_params.v_expansion_right.unwrap_or(v_w_left.clone());
         coefficient_expansion(
             &mut v,
             params.g(),

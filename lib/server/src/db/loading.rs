@@ -337,7 +337,7 @@ pub fn update_item(params: &Params, body: &[u8], db: &mut SparseDb) -> Result<u6
 
     let db_idx = u32::from_be_bytes(body[..4].try_into().unwrap()) as usize;
 
-    update_item_raw(params, db_idx, body, db)
+    update_item_raw(params, db_idx, &body[4..], db)
 }
 
 pub fn update_item_raw(
@@ -353,6 +353,8 @@ pub fn update_item_raw(
     let mut new_bucket = vec![0u8; instances * trials * pt_data_len];
     new_bucket[..data.len()].copy_from_slice(&data);
     let inp = new_bucket.as_slice();
+
+    assert_eq!(inp.len() % pt_data_len, 0);
 
     if db_idx >= params.num_items() {
         println!(

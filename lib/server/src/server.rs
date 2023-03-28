@@ -137,6 +137,7 @@ mod test {
     use rand::Rng;
     use spiral_rs::client::*;
     use spiral_rs::util;
+    use std::time::Instant;
 
     use crate::db::loading::*;
 

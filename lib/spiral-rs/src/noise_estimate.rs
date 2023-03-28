@@ -38,7 +38,11 @@ pub fn extract_paramset(params: &Params) -> Paramset {
 }
 
 fn get_base(t: usize, q: u64) -> f64 {
-    f64::ceil((q as f64).powf(1. / t as f64))
+    // f64::ceil((q as f64).powf(1. / t as f64))
+    let q_f = q as f64;
+    let t_f = t as f64;
+    let q_bits = f64::ceil(f64::log2(q_f));
+    2f64.powf((q_bits / t_f).ceil())
 }
 
 fn gadget_exp_factor(s: &Paramset, t: usize, z: f64) -> f64 {
@@ -80,7 +84,8 @@ pub fn get_noise_from_paramset(s: &Paramset) -> f64 {
         * (s.d as f64)
         * ((s.p as f64) / 2.).powi(2)
         * (sigma_reg_2);
-    let sigma_rest = (nu2 as f64) * (m_gsw as f64) * z_gsw.powi(2) / 4. * (sigma_gsw_2);
+    let sigma_rest =
+        (nu2 as f64) * (s.d as f64) * (m_gsw as f64) * z_gsw.powi(2) / 2. * (sigma_gsw_2);
     let sigma_r_2 = sigma_0_2 + sigma_rest;
 
     let sigma_packing_2 = ((s.d * s.n * s.t_conv) as f64) * s.sigma.powi(2) * z_conv.powi(2) / 4.;
@@ -136,18 +141,17 @@ mod test {
     fn get_noise_from_paramset_correct() {
         let cfg_expand = r#"
         {
-            "n": 3,
+            "n": 2,
             "nu_1": 9,
             "nu_2": 5,
             "p": 64,
-            "q2_bits": 20,
-            "t_gsw": 9,
+            "q2_bits": 24,
+            "t_gsw": 10,
             "t_conv": 4,
-            "t_exp_left": 5,
-            "t_exp_right": 5,
-            "instances": 2,
-            "db_item_size": 32768,
-            "db_num_items": 16384
+            "t_exp_left": 6,
+            "t_exp_right": 12,
+            "instances": 4,
+            "db_item_size": 32768
         }
         "#;
         let params = params_from_json(cfg_expand);

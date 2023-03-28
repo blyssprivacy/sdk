@@ -924,12 +924,15 @@ mod test {
         let mut client = Client::init(&params);
 
         let public_params = client.generate_keys();
-        println!("pp size: {}", public_params.serialize().len());
+        let pp_serialized = public_params.serialize();
+        println!("pp size: {}", pp_serialized.len());
+        let pp = PublicParameters::deserialize(params, &pp_serialized);
         let query = client.generate_query(target_idx);
 
         let (corr_item, db) = generate_random_db_and_get_item(params, target_idx);
 
-        let response = process_query(params, &public_params, &query, db.as_slice());
+        let response = process_query(params, &pp, &query, db.as_slice());
+        println!("response size: {}", response.len());
 
         let result = client.decode_response(response.as_slice());
 
@@ -952,20 +955,19 @@ mod test {
     #[ignore]
     fn larger_full_protocol_is_correct() {
         let cfg_expand = r#"
-            {
-                "n": 3,
-                "nu_1": 9,
-                "nu_2": 5,
-                "p": 256,
-                "q2_bits": 20,
-                "t_gsw": 9,
-                "t_conv": 4,
-                "t_exp_left": 8,
-                "t_exp_right": 8,
-                "instances": 2,
-                "db_item_size": 36864,
-                "db_num_items": 16384
-            }
+        {
+            "n": 2,
+            "nu_1": 9,
+            "nu_2": 5,
+            "p": 64,
+            "q2_bits": 24,
+            "t_gsw": 10,
+            "t_conv": 4,
+            "t_exp_left": 6,
+            "t_exp_right": 12,
+            "instances": 4,
+            "db_item_size": 24576
+        }
         "#;
         let cfg = cfg_expand;
         let params = params_from_json(&cfg);

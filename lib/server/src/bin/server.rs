@@ -65,6 +65,7 @@ async fn setup(
     data: web::Data<ServerState>,
 ) -> Result<String, actix_web::error::Error> {
     let mut pub_params_map_mut = data.pub_params.write().unwrap();
+    println!("Setting up public parameters... ({} bytes)", body.len());
     assert_eq!(body.len(), data.params.setup_bytes());
     let pub_params = PublicParameters::deserialize(&data.params, &body);
 
@@ -169,19 +170,46 @@ async fn index(data: web::Data<ServerState>) -> String {
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
+    // let cfg_expand = r#"{
+    //     "n": 4,
+    //     "nu_1": 9,
+    //     "nu_2": 5,
+    //     "p": 256,
+    //     "q2_bits": 20,
+    //     "t_gsw": 8,
+    //     "t_conv": 4,
+    //     "t_exp_left": 8,
+    //     "t_exp_right": 56,
+    //     "instances": 1,
+    //     "db_item_size": 32768
+    // }"#;
     let cfg_expand = r#"{
-        "n": 4,
+        "n": 2,
         "nu_1": 9,
         "nu_2": 5,
-        "p": 256,
-        "q2_bits": 20,
-        "t_gsw": 8,
+        "p": 64,
+        "q2_bits": 24,
+        "t_gsw": 10,
         "t_conv": 4,
-        "t_exp_left": 8,
-        "t_exp_right": 56,
-        "instances": 1,
+        "t_exp_left": 6,
+        "t_exp_right": 12,
+        "instances": 4,
         "db_item_size": 32768
     }"#;
+    // let cfg_expand = r#"{
+    //     "n": 3,
+    //     "nu_1": 7,
+    //     "nu_2": 7,
+    //     "p": 256,
+    //     "q2_bits": 20,
+    //     "t_gsw": 8,
+    //     "t_conv": 4,
+    //     "t_exp_left": 8,
+    //     "t_exp_right": 8,
+    //     "instances": 4,
+    //     "db_item_size": 36864,
+    //     "db_num_items": 4096
+    // }"#;
 
     let args: Vec<String> = env::args().collect();
     let mut port = "8008";

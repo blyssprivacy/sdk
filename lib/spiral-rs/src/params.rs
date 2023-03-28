@@ -149,8 +149,12 @@ impl Params {
 
         if self.expand_queries {
             let expansion_left_sz = self.g() * self.t_exp_left;
-            let expansion_right_sz = (self.stop_round() + 1) * self.t_exp_right;
+            let mut expansion_right_sz = (self.stop_round() + 1) * self.t_exp_right;
             let conversion_sz = 2 * self.t_conv;
+
+            if self.t_exp_left == self.t_exp_right {
+                expansion_right_sz = 0;
+            }
 
             sz_polys += expansion_left_sz + expansion_right_sz + conversion_sz;
         }
