@@ -337,6 +337,17 @@ impl<'a> PolyMatrixNTT<'a> {
     }
 }
 
+pub fn shift_rows_by_one<'a>(inp: &PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
+    if inp.rows == 1 {
+        return inp.clone();
+    }
+
+    let all_but_last_row = inp.submatrix(0, 0, inp.rows - 1, inp.cols);
+    let last_row = inp.submatrix(inp.rows - 1, 0, 1, inp.cols);
+    let out = stack_ntt(&last_row, &all_but_last_row);
+    out
+}
+
 pub fn multiply_poly(params: &Params, res: &mut [u64], a: &[u64], b: &[u64]) {
     for c in 0..params.crt_count {
         for i in 0..params.poly_len {
@@ -548,6 +559,14 @@ pub fn automorph_alloc<'a>(a: &PolyMatrixRaw<'a>, t: usize) -> PolyMatrixRaw<'a>
 pub fn stack<'a>(a: &PolyMatrixRaw<'a>, b: &PolyMatrixRaw<'a>) -> PolyMatrixRaw<'a> {
     assert_eq!(a.cols, b.cols);
     let mut c = PolyMatrixRaw::zero(a.params, a.rows + b.rows, a.cols);
+    c.copy_into(a, 0, 0);
+    c.copy_into(b, a.rows, 0);
+    c
+}
+
+pub fn stack_ntt<'a>(a: &PolyMatrixNTT<'a>, b: &PolyMatrixNTT<'a>) -> PolyMatrixNTT<'a> {
+    assert_eq!(a.cols, b.cols);
+    let mut c = PolyMatrixNTT::zero(a.params, a.rows + b.rows, a.cols);
     c.copy_into(a, 0, 0);
     c.copy_into(b, a.rows, 0);
     c

@@ -145,7 +145,8 @@ impl Params {
         let mut sz_polys = 0;
 
         let packing_sz = ((self.n + 1) - 1) * self.t_conv;
-        sz_polys += self.n * packing_sz;
+        sz_polys += 2 * packing_sz;
+        println!("packing: {}", sz_polys * self.poly_len * size_of::<u64>());
 
         if self.expand_queries {
             let expansion_left_sz = self.g() * self.t_exp_left;
@@ -155,6 +156,15 @@ impl Params {
             if self.t_exp_left == self.t_exp_right {
                 expansion_right_sz = 0;
             }
+            println!(
+                "exp_left: {}",
+                expansion_left_sz * self.poly_len * size_of::<u64>()
+            );
+            println!(
+                "exp_right: {}",
+                expansion_right_sz * self.poly_len * size_of::<u64>()
+            );
+            println!("conv: {}", conversion_sz * self.poly_len * size_of::<u64>());
 
             sz_polys += expansion_left_sz + expansion_right_sz + conversion_sz;
         }

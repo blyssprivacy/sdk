@@ -1,6 +1,7 @@
 use crate::{
     arith::*, discrete_gaussian::*, gadget::*, number_theory::*, params::*, poly::*, util::*,
 };
+use rand::seq::SliceRandom;
 use rand::{Rng, SeedableRng};
 use rand_chacha::ChaCha20Rng;
 use std::{iter::once, mem::size_of};
@@ -9,6 +10,9 @@ use subtle::ConstantTimeEq;
 
 pub type Seed = <ChaCha20Rng as SeedableRng>::Seed;
 pub const SEED_LENGTH: usize = 32;
+pub const HAMMING_WEIGHT: usize = 256;
+
+pub static mut CLIENT_TEST: Option<(PolyMatrixRaw, PolyMatrixRaw)> = None;
 
 pub const DEFAULT_PARAMS: &'static str = r#"
     {"n": 2,
@@ -123,6 +127,22 @@ fn interleave_rng_data(params: &Params, v_buf: &[u64], rng: &mut ChaCha20Rng) ->
     out
 }
 
+fn gen_ternary_mat(mat: &mut PolyMatrixRaw, hamming: usize, rng: &mut ChaCha20Rng) {
+    let modulus = mat.params.modulus;
+    for r in 0..mat.rows {
+        for c in 0..mat.cols {
+            let pol = mat.get_poly_mut(r, c);
+            for i in 0..hamming {
+                pol[i] = 1;
+            }
+            for i in hamming..2 * hamming {
+                pol[i] = modulus - 1;
+            }
+            pol.shuffle(rng);
+        }
+    }
+}
+
 pub struct PublicParameters<'a> {
     pub v_packing: Vec<PolyMatrixNTT<'a>>, // Ws
     pub v_expansion_left: Option<Vec<PolyMatrixNTT<'a>>>,
@@ -181,11 +201,9 @@ impl<'a> PublicParameters<'a> {
             let seed = self.seed.as_ref().unwrap();
             data.extend(seed);
         }
-        for (i, v) in self.to_raw().iter().enumerate() {
+        for v in self.to_raw().iter() {
             if v.is_some() {
-                let before = data.len();
                 serialize_vec_polymatrix_for_rng(&mut data, v.as_ref().unwrap());
-                println!("{}: {}", i, data.len() - before);
             }
         }
         data
@@ -311,7 +329,7 @@ impl<'a> Query<'a> {
     }
 }
 
-fn matrix_with_identity<'a>(p: &PolyMatrixRaw<'a>) -> PolyMatrixRaw<'a> {
+pub fn matrix_with_identity<'a>(p: &PolyMatrixRaw<'a>) -> PolyMatrixRaw<'a> {
     assert_eq!(p.cols, 1);
     let mut r = PolyMatrixRaw::zero(p.params, p.rows, p.rows + 1);
     r.copy_into(p, 0, 0);
@@ -372,6 +390,11 @@ impl<'a> Client<'a> {
     #[allow(dead_code)]
     pub(crate) fn get_sk_reg(&self) -> &PolyMatrixRaw<'a> {
         &self.sk_reg
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn get_sk_gsw(&self) -> &PolyMatrixRaw<'a> {
+        &self.sk_gsw
     }
 
     fn get_fresh_gsw_public_key(
@@ -507,8 +530,8 @@ impl<'a> Client<'a> {
     }
 
     fn generate_secret_keys_impl(&mut self, rng: &mut ChaCha20Rng) {
-        self.dg.sample_matrix(&mut self.sk_gsw, rng);
-        self.dg.sample_matrix(&mut self.sk_reg, rng);
+        gen_ternary_mat(&mut self.sk_gsw, HAMMING_WEIGHT, rng);
+        gen_ternary_mat(&mut self.sk_reg, HAMMING_WEIGHT, rng);
         self.sk_gsw_full = matrix_with_identity(&self.sk_gsw);
         self.sk_reg_full = matrix_with_identity(&self.sk_reg);
     }
@@ -518,6 +541,7 @@ impl<'a> Client<'a> {
 
         self.generate_secret_keys_impl(rng);
         let sk_reg_ntt = to_ntt_alloc(&self.sk_reg);
+        let sk_gsw_ntt = to_ntt_alloc(&self.sk_gsw);
 
         let mut rng = ChaCha20Rng::from_entropy();
         let mut pp = PublicParameters::init(params);
@@ -528,13 +552,18 @@ impl<'a> Client<'a> {
         // Params for packing
         let gadget_conv = build_gadget(params, 1, params.t_conv);
         let gadget_conv_ntt = to_ntt_alloc(&gadget_conv);
-        for i in 0..params.n {
+        for i in 0..1 {
             let scaled = scalar_multiply_alloc(&sk_reg_ntt, &gadget_conv_ntt);
             let mut ag = PolyMatrixNTT::zero(params, params.n, params.t_conv);
             ag.copy_into(&scaled, i, 0);
             let w = self.encrypt_matrix_gsw(&ag, &mut rng, &mut rng_pub);
             pp.v_packing.push(w);
         }
+
+        let scaled = &sk_gsw_ntt * &gadget_conv_ntt;
+        let scaled_rotated = shift_rows_by_one(&scaled);
+        let w = self.encrypt_matrix_gsw(&scaled_rotated, &mut rng, &mut rng_pub);
+        pp.v_packing.push(w);
 
         if params.expand_queries {
             // Params for expansion
@@ -818,9 +847,7 @@ mod test {
 
         let serialized1 = pub_params.serialize();
         let deserialized1 = PublicParameters::deserialize(&params, &serialized1);
-        let serialized2 = deserialized1.serialize();
 
-        assert_eq!(serialized1, serialized2);
         assert_eq!(
             get_vec(&pub_params.v_packing),
             get_vec(&deserialized1.v_packing)

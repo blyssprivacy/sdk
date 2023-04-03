@@ -1,8 +1,9 @@
 use std::f64::consts::{E, PI};
 
-use crate::params::{Params, Q2_VALUES};
-
-const STD_DEV_BOUND: f64 = 5f64;
+use crate::{
+    client::HAMMING_WEIGHT,
+    params::{Params, Q2_VALUES},
+};
 
 // This a simplified subset of a Params instance
 pub struct Paramset {
@@ -69,13 +70,16 @@ pub fn get_noise_from_paramset(s: &Paramset) -> f64 {
     if s.expand_queries {
         sigma_reg_2 = 4f64.powf(num_exp_reg as f64)
             * s.sigma.powi(2)
-            * ((1 + s.d * s.t_exp_left) as f64 * z_exp_left.powi(2) / 3.);
+            // * (1.0 + ((s.d * s.t_exp_left) as f64 * z_exp_left.powi(2) / 3.));
+            * (1.0 + ((s.t_exp_left) as f64 * z_exp_left.powi(2) / 3.));
+        // NB: above, we exclude a factor of s.d; this is bad according to the paper, but
+        //     in practice, it seems to model the noise accurately
 
         let num_exp_gsw = f64::ceil(f64::log2((s.t_gsw as f64) * (nu2 as f64))) as i32 + 1;
         sigma_gsw_2 = 4f64.powi(num_exp_gsw)
             * s.sigma.powi(2)
-            * ((1 + s.d * s.t_exp_right) as f64 * z_exp_right.powi(2) / 3.);
-        sigma_gsw_2 = sigma_gsw_2 * (s.d as f64) * (STD_DEV_BOUND * s.sigma).powi(2)
+            * (1.0 + ((s.t_exp_right) as f64 * z_exp_right.powi(2) / 3.));
+        sigma_gsw_2 = sigma_gsw_2 * 2. * (HAMMING_WEIGHT as f64)
             + 2. * gadget_exp_factor(s, s.t_conv, z_conv);
     }
 
@@ -144,12 +148,12 @@ mod test {
             "n": 2,
             "nu_1": 9,
             "nu_2": 5,
-            "p": 64,
-            "q2_bits": 24,
-            "t_gsw": 10,
-            "t_conv": 4,
-            "t_exp_left": 6,
-            "t_exp_right": 12,
+            "p": 256,
+            "q2_bits": 22,
+            "t_gsw": 7,
+            "t_conv": 3,
+            "t_exp_left": 5,
+            "t_exp_right": 5,
             "instances": 4,
             "db_item_size": 32768
         }
@@ -160,6 +164,7 @@ mod test {
         let noise_log2 = f64::log2(s_e);
         println!("noise_log2: {}", noise_log2);
         println!("p_err: {}", p_err);
+        println!("setup bytes: {}", params.setup_bytes());
         // assert!(noise_log2 < 87.0);
         assert!(p_err <= -40.0);
     }

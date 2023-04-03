@@ -18,6 +18,9 @@ function spawnChildProcess(): Promise<ChildProcess> {
         resolve(child);
       }
     });
+    child.stderr.on('data', chunk => {
+      console.log(chunk.toString());
+    });
   });
 }
 

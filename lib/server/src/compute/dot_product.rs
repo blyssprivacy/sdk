@@ -156,16 +156,16 @@ pub fn multiply_reg_by_sparse_database(
         let mut adds = 0;
 
         for i in 0..num_per {
-            let (part_0, part_1) = out[i].data.as_mut_slice().split_at_mut(2 * poly_len);
-            let (out_0, out_1) = part_0.split_at_mut(poly_len);
-            let (out_2, out_3) = part_1.split_at_mut(poly_len);
-
             let full_idx = db_idx * (dim0 * num_per) + j * num_per + i;
             let result = db.get_idx(full_idx);
             if result.is_none() {
                 continue;
             }
             let real_idx = *result.unwrap();
+
+            let (part_0, part_1) = out[i].data.as_mut_slice().split_at_mut(2 * poly_len);
+            let (out_0, out_1) = part_0.split_at_mut(poly_len);
+            let (out_2, out_3) = part_1.split_at_mut(poly_len);
 
             let b_poly = db.data[real_idx].as_slice();
 

@@ -298,32 +298,6 @@ pub fn convert_pt_to_poly<'a>(params: &'a Params, data: &[u8]) -> PolyMatrixNTT<
     item.ntt()
 }
 
-pub fn convert_pt_to_poly_inplace<'a>(
-    params: &'a Params,
-    data: &[u8],
-    item: &mut PolyMatrixRaw,
-    item_ntt: &mut PolyMatrixNTT,
-) {
-    let logp = f64::ceil(f64::log2(params.pt_modulus as f64)) as usize;
-    let modp_words_per_chunk = params.modp_words_per_chunk();
-    assert!(modp_words_per_chunk <= params.poly_len);
-
-    let modp_words_read = f64::ceil((data.len() * 8) as f64 / logp as f64) as usize;
-    assert!(modp_words_read <= params.poly_len);
-
-    // optimization for logp = 8
-    assert_eq!(logp, 8);
-
-    for i in 0..modp_words_read {
-        item.data[i] = data[i] as u64;
-        // item.data[i] = read_arbitrary_bits(&data, i * logp, logp) % params.pt_modulus;
-        assert!(item.data[i] < params.pt_modulus);
-        item.data[i] = recenter_mod(item.data[i], params.pt_modulus, params.modulus);
-    }
-
-    to_ntt(item_ntt, &item);
-}
-
 pub fn update_item(params: &Params, body: &[u8], db: &mut SparseDb) -> Result<u64, Error> {
     let instances = params.instances;
     let trials = params.n * params.n;
@@ -369,17 +343,10 @@ pub fn update_item_raw(
     let now = Instant::now();
     let results: Vec<_> = inp
         .par_chunks_exact(pt_data_len)
-        .map_with(
-            (
-                PolyMatrixRaw::zero(params, 1, 1),
-                PolyMatrixNTT::zero(params, 1, 1),
-            ),
-            |(raw, ntt), pt_data| {
-                convert_pt_to_poly_inplace(params, pt_data, raw, ntt);
-                // let ntt = convert_pt_to_poly(params, pt_data);
-                pack_ntt_poly(&ntt)
-            },
-        )
+        .map(|pt_data| {
+            let ntt = convert_pt_to_poly(params, pt_data);
+            pack_ntt_poly(&ntt)
+        })
         .collect();
     let upsert_time = now.elapsed().as_micros();
 
