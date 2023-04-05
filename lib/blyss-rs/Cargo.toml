@@ -1,0 +1,23 @@
+[package]
+name = "blyss-rs"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+base64 = "0.21.0"
+hex = "0.4.3"
+reqwest = { version = "0.11.16", default-features = false, features = ["multipart", "rustls-tls"] }
+serde = { version = "1.0.159", features = ["derive"] }
+serde_json = "1.0.95"
+spiral-rs = { path = "../spiral-rs" }
+thiserror = "1.0.40"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+ruint = { version = "1.2.0", features = ["serde", "num-bigint", "ark-ff"] }
+bzip2-rs = "0.1.2"
+
+[dev-dependencies]
+semaphore = { git = "https://github.com/worldcoin/semaphore-rs" }
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
