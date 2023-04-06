@@ -181,8 +181,8 @@ async fn fetch_idx_for_identity(
 
 /// Fetch the Merkle proof for the given identity commitment using Blyss, with the given lookup configuration.
 async fn private_fetch_merkle_proof_with_cfg(
-    lookup_cfg: &LookupCfg,
     identity_commitment: &str,
+    lookup_cfg: &LookupCfg,
 ) -> Result<Vec<ProofStep>, Error> {
     let mut owned_ic = identity_commitment.to_owned();
     if !owned_ic.starts_with("0x") {
@@ -204,11 +204,11 @@ async fn private_fetch_merkle_proof_with_cfg(
 /// - `lookup_cfg_url` - A URL pointing to the JSON lookup configuration (see `LookupCfg`).
 /// - `identity_commitment` - The identity commitment (as a big-endian hex string) to fetch the Merkle proof for.
 pub async fn private_fetch_merkle_proof(
-    lookup_cfg_url: &str,
     identity_commitment: &str,
+    lookup_cfg_url: &str,
 ) -> Result<Vec<ProofStep>, Error> {
     let lookup_cfg = LookupCfg::from_url(lookup_cfg_url).await?;
-    private_fetch_merkle_proof_with_cfg(&lookup_cfg, identity_commitment).await
+    private_fetch_merkle_proof_with_cfg(identity_commitment, &lookup_cfg).await
 }
 
 #[cfg(test)]
