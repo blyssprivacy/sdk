@@ -2,6 +2,16 @@
 name = "spiral-rs"
 version = "0.2.0"
 edition = "2021"
+authors = [
+    "Samir Menon <samir@blyss.dev>",
+    "Neil Movva <neil@blyss.dev>"]
+homepage = "https://blyss.dev"
+repository = "https://github.com/blyssprivacy/sdk"
+description = "Rust implementation of the Spiral PIR scheme"
+keywords = ["privacy", "fhe", "cryptography"]
+categories = ["cryptography"]
+readme = "README.md"
+license = "MIT"
 
 [features]
 server = ["rayon"]
