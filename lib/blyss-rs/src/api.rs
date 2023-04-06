@@ -16,7 +16,7 @@ use spiral_rs::{
 /// HTTP GET request to the given URL with the given API key.
 pub(crate) async fn http_get_string(url: &str, api_key: &str) -> Result<String, Error> {
     let req = reqwest::Client::new().get(url).header("x-api-key", api_key);
-    let res = req.send().await?.text().await?;
+    let res = req.send().await?.error_for_status()?.text().await?;
     Ok(res)
 }
 
@@ -31,7 +31,7 @@ pub(crate) async fn http_post_bytes(
         .body(data)
         .header("Content-Type", "application/octet-stream")
         .header("x-api-key", api_key);
-    let res = req.send().await?;
+    let res = req.send().await?.error_for_status()?;
     let resp_body = res.bytes().await?;
     Ok(resp_body.to_vec())
 }
@@ -46,7 +46,7 @@ pub(crate) async fn http_post_string(
         .post(url)
         .body(data)
         .header("x-api-key", api_key);
-    let res = req.send().await?.text().await?;
+    let res = req.send().await?.error_for_status()?.text().await?;
     Ok(res)
 }
 
@@ -67,7 +67,7 @@ pub(crate) async fn http_post_form_data(
         .post(url)
         .multipart(form_data)
         .header("x-api-key", api_key);
-    let res = req.send().await?;
+    let res = req.send().await?.error_for_status()?;
     let resp_body = res.bytes().await?;
     Ok(resp_body.to_vec())
 }
@@ -180,7 +180,7 @@ async fn perform_setup(url: &str, api_key: &str, setup_data: Vec<u8>) -> Result<
         .get("uuid")
         .ok_or(Error::Unknown)?
         .as_str()
-        .unwrap()
+        .ok_or(Error::Unknown)?
         .to_owned();
     Ok(uuid)
 }
@@ -210,7 +210,7 @@ async fn private_read<'a>(
 
     let resp_data_b64 =
         http_post_bytes(&format!("{}/private-read", url), api_key, full_query_data).await?;
-    let resp_data = general_purpose::STANDARD.decode(resp_data_b64).unwrap();
+    let resp_data = general_purpose::STANDARD.decode(resp_data_b64)?;
     let resp_chunks = deserialize_chunks(&resp_data);
 
     let mut results = Vec::new();
@@ -250,10 +250,9 @@ impl ApiClient {
     /// The URL should be the URL of the bucket, e.g. `https://beta.api.blyss.dev/global.abc123`.
     pub async fn new(url: &str, api_key: &str) -> Result<Self, Error> {
         let metadata = get_meta(url, api_key).await?;
-        let params_value = serde_json::from_str::<Value>(&metadata)
-            .unwrap()
+        let params_value = serde_json::from_str::<Value>(&metadata)?
             .get("pir_scheme")
-            .unwrap()
+            .ok_or(Error::Unknown)?
             .clone();
         let params = params_from_json_obj(&params_value);
         let boxed_params = Box::leak(Box::new(params)); // TODO: avoid this
