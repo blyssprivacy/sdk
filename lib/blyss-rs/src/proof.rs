@@ -1,40 +1,67 @@
 use crate::{
-    api::{http_get_string, private_read},
+    api::{http_get_string, ApiClient},
     error::Error,
 };
 use ruint::aliases::U256;
 use serde::{Deserialize, Serialize};
 
+/// A configuration for performing Merkle proof lookups using Blyss.
+///
+/// Typically loaded with `from_url` or `from_json`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LookupCfg {
+    /// The URL of the Blyss bucket containing the subtrees and leaf nodes.
     pub bucket_url: String,
+    /// The API key to optionally use when accessing the bucket. Can be empty.
     pub api_key: String,
+    /// The URL of the JSON file containing the cap of the Merkle tree.
     pub cap_url: String,
+    /// The height of the subtrees stored in the bucket.
     pub subtree_height: usize,
+    /// The height of the cap of the Merkle tree.
     pub cap_height: usize,
+    /// The height of the full Merkle tree.
     pub tree_height: usize,
 }
 
+impl LookupCfg {
+    /// Fetch a `LookupCfg` from the given URL to a JSON object.
+    pub async fn from_url(url: &str) -> Result<LookupCfg, Error> {
+        let val = http_get_string(url, "").await?;
+        let cfg: LookupCfg = serde_json::from_str(&val)?;
+        Ok(cfg)
+    }
+
+    /// Parse a `LookupCfg` from given JSON string.
+    pub async fn from_json(json: &str) -> Result<LookupCfg, Error> {
+        let cfg: LookupCfg = serde_json::from_str(&json)?;
+        Ok(cfg)
+    }
+}
+
+/// A step in a Merkle proof.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProofStep {
+    /// The value of the sibiling node at this step.
     pub value: String,
+    /// The position of the sibiling node at this step.
+    /// `0` is on the left, and `1` is on the right.
     pub pos: usize,
 }
 
 impl ProofStep {
+    /// Convert the string value for the sibiling node in this step to a `U256`.
     pub fn u256(&self) -> U256 {
         to_u256(&self.value)
     }
 }
 
-pub fn to_u256(value: &str) -> U256 {
+/// Convert the given BE hex string to a `U256`.
+fn to_u256(value: &str) -> U256 {
     U256::from_be_bytes::<32>(hex::decode(&value[2..]).unwrap().try_into().unwrap())
 }
 
-pub fn to_str(value: &U256) -> String {
-    format!("0x{}", hex::encode(value.to_be_bytes::<32>()))
-}
-
+/// Get the indices of the subtrees needed to construct a Merkle proof for the given identity index.
 fn get_subtree_indices(lookup_cfg: &LookupCfg, identity_idx: usize) -> Vec<String> {
     let mut keys_to_fetch = Vec::new();
     let mut cur_level = lookup_cfg.tree_height - lookup_cfg.subtree_height;
@@ -53,6 +80,7 @@ fn get_subtree_indices(lookup_cfg: &LookupCfg, identity_idx: usize) -> Vec<Strin
     keys_to_fetch
 }
 
+/// Get the Merkle proof for the given index in the given tree.
 fn get_subproof(tree: &[String], tree_height: usize, idx: usize) -> Vec<ProofStep> {
     let mut out = Vec::new();
     for level in 1..tree_height {
@@ -69,6 +97,7 @@ fn get_subproof(tree: &[String], tree_height: usize, idx: usize) -> Vec<ProofSte
     return out;
 }
 
+/// Construct a complete Merkle proof for the given identity index, given the appropriate subtrees.
 fn construct_merkle_proof(
     lookup_cfg: &LookupCfg,
     identity_idx: usize,
@@ -99,29 +128,28 @@ fn construct_merkle_proof(
     proof
 }
 
-pub async fn get_cap(url: &str) -> Result<Vec<String>, Error> {
+/// Fetch the cap of the Merkle tree.
+async fn get_cap(url: &str) -> Result<Vec<String>, Error> {
     let val = http_get_string(url, "").await?;
     let cap: Vec<String> = serde_json::from_str(&val)?;
     Ok(cap)
 }
 
-fn get_idx_within_cap(idx: usize, tree_height: usize, cap_height: usize) -> usize {
-    let idx_within_level = idx >> ((tree_height - 1) - (cap_height - 1));
+/// Get the index of the given identity within the cap.
+fn get_idx_within_cap(identity_idx: usize, tree_height: usize, cap_height: usize) -> usize {
+    let idx_within_level = identity_idx >> ((tree_height - 1) - (cap_height - 1));
     idx_within_level
 }
 
-pub async fn fetch_merkle_proof_at_idx(
+/// Fetch the Merkle proof for the given identity index using Blyss.
+async fn fetch_merkle_proof_at_idx(
+    client: &mut ApiClient,
     lookup_cfg: &LookupCfg,
     identity_idx: usize,
 ) -> Result<Vec<ProofStep>, Error> {
     let cap = get_cap(&lookup_cfg.cap_url).await?;
     let subtrees_to_query = get_subtree_indices(lookup_cfg, identity_idx);
-    let subtrees = private_read(
-        &lookup_cfg.bucket_url,
-        &lookup_cfg.api_key,
-        &subtrees_to_query,
-    )
-    .await?;
+    let subtrees = client.private_read(&subtrees_to_query).await?;
     let mut subtrees_as_strs = Vec::new();
     for s in subtrees {
         let s: Vec<String> = serde_json::from_slice(&s)?;
@@ -138,28 +166,49 @@ pub async fn fetch_merkle_proof_at_idx(
     Ok(proof)
 }
 
-pub async fn fetch_idx_for_identity(
-    lookup_cfg: &LookupCfg,
+/// Get the index for the given identity commitment.
+async fn fetch_idx_for_identity(
+    client: &mut ApiClient,
     identity_commitment: &str,
 ) -> Result<usize, Error> {
-    let result = private_read(
-        &lookup_cfg.bucket_url,
-        &lookup_cfg.api_key,
-        &[identity_commitment.to_owned()],
-    )
-    .await?;
+    let result = client
+        .private_read(&[identity_commitment.to_owned()])
+        .await?;
     let index: usize = serde_json::from_slice(&result[0])?;
 
     Ok(index)
 }
 
-pub async fn fetch_merkle_proof(
+/// Fetch the Merkle proof for the given identity commitment using Blyss, with the given lookup configuration.
+async fn fetch_merkle_proof_with_cfg(
     lookup_cfg: &LookupCfg,
     identity_commitment: &str,
 ) -> Result<Vec<ProofStep>, Error> {
-    let index = fetch_idx_for_identity(lookup_cfg, identity_commitment).await?;
-    let proof = fetch_merkle_proof_at_idx(lookup_cfg, index).await?;
+    let mut owned_ic = identity_commitment.to_owned();
+    if !owned_ic.starts_with("0x") {
+        owned_ic = format!("0x{}", identity_commitment);
+    }
+    owned_ic = owned_ic.to_lowercase();
+
+    let mut client = ApiClient::new(&lookup_cfg.bucket_url, &lookup_cfg.api_key).await?;
+    client.setup().await?;
+
+    let index = fetch_idx_for_identity(&mut client, &owned_ic).await?;
+    let proof = fetch_merkle_proof_at_idx(&mut client, lookup_cfg, index).await?;
     Ok(proof)
+}
+
+/// Fetch the Merkle proof for the given identity commitment using Blyss.
+///
+/// # Arguments
+/// - `lookup_cfg_url` - A URL pointing to the JSON lookup configuration (see `LookupCfg`).
+/// - `identity_commitment` - The identity commitment (as a big-endian hex string) to fetch the Merkle proof for.
+pub async fn fetch_merkle_proof(
+    lookup_cfg_url: &str,
+    identity_commitment: &str,
+) -> Result<Vec<ProofStep>, Error> {
+    let lookup_cfg = LookupCfg::from_url(lookup_cfg_url).await?;
+    fetch_merkle_proof_with_cfg(&lookup_cfg, identity_commitment).await
 }
 
 #[cfg(test)]
@@ -168,7 +217,11 @@ mod tests {
 
     use semaphore::poseidon;
 
-    pub fn verify_proof(input: &str, proof: &[ProofStep], root: &str) {
+    fn to_str(value: &U256) -> String {
+        format!("0x{}", hex::encode(value.to_be_bytes::<32>()))
+    }
+
+    fn verify_proof(input: &str, proof: &[ProofStep], root: &str) {
         let mut cur_hash = to_u256(&input);
         for step in proof.iter() {
             let step_hash = step.u256();

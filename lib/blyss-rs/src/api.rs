@@ -9,18 +9,23 @@ use serde_json::Value;
 use spiral_rs::{
     client::Client,
     key_value::{extract_result_impl, row_from_key, varint_decode},
+    params::Params,
     util::params_from_json_obj,
 };
 
 /// HTTP GET request to the given URL with the given API key.
-pub async fn http_get_string(url: &str, api_key: &str) -> Result<String, Error> {
+pub(crate) async fn http_get_string(url: &str, api_key: &str) -> Result<String, Error> {
     let req = reqwest::Client::new().get(url).header("x-api-key", api_key);
     let res = req.send().await?.text().await?;
     Ok(res)
 }
 
 /// HTTP POST request with binary body to the given URL with the given API key.
-pub async fn http_post_bytes(url: &str, api_key: &str, data: Vec<u8>) -> Result<Vec<u8>, Error> {
+pub(crate) async fn http_post_bytes(
+    url: &str,
+    api_key: &str,
+    data: Vec<u8>,
+) -> Result<Vec<u8>, Error> {
     let req = reqwest::Client::new()
         .post(url)
         .body(data)
@@ -32,7 +37,11 @@ pub async fn http_post_bytes(url: &str, api_key: &str, data: Vec<u8>) -> Result<
 }
 
 /// HTTP POST request with string body to the given URL with the given API key.
-pub async fn http_post_string(url: &str, api_key: &str, data: String) -> Result<String, Error> {
+pub(crate) async fn http_post_string(
+    url: &str,
+    api_key: &str,
+    data: String,
+) -> Result<String, Error> {
     let req = reqwest::Client::new()
         .post(url)
         .body(data)
@@ -42,7 +51,7 @@ pub async fn http_post_string(url: &str, api_key: &str, data: String) -> Result<
 }
 
 /// HTTP POST request to the given URL with the given API key.
-pub async fn http_post_form_data(
+pub(crate) async fn http_post_form_data(
     url: &str,
     api_key: &str,
     data: Vec<u8>,
@@ -124,7 +133,7 @@ fn is_all_zeros(decrypted: &[u8]) -> bool {
 }
 
 /// Fetch the metadata from the given URL.
-pub async fn get_meta(url: &str, api_key: &str) -> Result<String, Error> {
+pub(crate) async fn get_meta(url: &str, api_key: &str) -> Result<String, Error> {
     http_get_string(&format!("{}/meta", url), api_key).await
 }
 
@@ -177,25 +186,14 @@ async fn perform_setup(url: &str, api_key: &str, setup_data: Vec<u8>) -> Result<
 }
 
 /// Privately read the given keys from the given URL, using the given API key.
-pub async fn private_read(
+async fn private_read<'a>(
+    client: &Client<'a>,
+    params: &Params,
+    uuid: &str,
     url: &str,
     api_key: &str,
     keys: &[String],
 ) -> Result<Vec<Vec<u8>>, Error> {
-    let metadata = get_meta(url, api_key).await?;
-    let params_value = serde_json::from_str::<Value>(&metadata)
-        .unwrap()
-        .get("pir_scheme")
-        .unwrap()
-        .clone();
-    let params = params_from_json_obj(&params_value);
-    let mut client = Client::init(&params);
-
-    let setup = client.generate_keys();
-    let setup_data = setup.serialize();
-
-    let uuid = perform_setup(url, api_key, setup_data).await?;
-
     let queries: Vec<_> = keys
         .iter()
         .map(|key| {
@@ -233,4 +231,84 @@ pub async fn private_read(
     }
 
     Ok(results)
+}
+
+/// A client for a single, existing Blyss bucket.
+pub struct ApiClient {
+    /// The URL for the bucket.
+    pub url: String,
+
+    api_key: String,
+    params: &'static Params,
+    client: Client<'static>,
+    uuid: Option<String>,
+}
+
+impl ApiClient {
+    /// Create a new API client for the given URL and API key.
+    ///
+    /// The URL should be the URL of the bucket, e.g. `https://beta.api.blyss.dev/global.abc123`.
+    pub async fn new(url: &str, api_key: &str) -> Result<Self, Error> {
+        let metadata = get_meta(url, api_key).await?;
+        let params_value = serde_json::from_str::<Value>(&metadata)
+            .unwrap()
+            .get("pir_scheme")
+            .unwrap()
+            .clone();
+        let params = params_from_json_obj(&params_value);
+        let boxed_params = Box::leak(Box::new(params)); // TODO: avoid this
+
+        Ok(Self {
+            url: url.to_string(),
+            api_key: api_key.to_string(),
+            params: boxed_params,
+            client: Client::init(boxed_params),
+            uuid: None,
+        })
+    }
+
+    /// Returns whether the client has been set up for private reads.
+    fn has_set_up(&self) -> bool {
+        self.uuid.is_some()
+    }
+
+    /// Prepare the client for private reads. This must be called before calling private_read().
+    pub async fn setup(&mut self) -> Result<(), Error> {
+        let setup = self.client.generate_keys();
+        let setup_data = setup.serialize();
+
+        let uuid = perform_setup(&self.url, &self.api_key, setup_data).await?;
+
+        self.uuid = Some(uuid);
+
+        Ok(())
+    }
+
+    /// Privately read the given keys from the bucket.
+    /// Must call setup() before calling this.
+    ///
+    /// # Arguments
+    /// - `keys` - The keys to read.
+    ///
+    /// # Returns
+    /// A vector of the values corresponding to the given keys.
+    /// If a key does not exist, the corresponding value will be an empty vector.
+    ///
+    /// # Errors
+    /// - `Error::NeedSetup` - If setup() has not been called.
+    pub async fn private_read(&self, keys: &[String]) -> Result<Vec<Vec<u8>>, Error> {
+        if !self.has_set_up() {
+            return Err(Error::NeedSetup);
+        }
+
+        private_read(
+            &self.client,
+            &self.params,
+            self.uuid.as_ref().unwrap(),
+            &self.url,
+            &self.api_key,
+            keys,
+        )
+        .await
+    }
 }
