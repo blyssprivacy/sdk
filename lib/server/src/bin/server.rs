@@ -65,7 +65,6 @@ async fn setup(
     data: web::Data<ServerState>,
 ) -> Result<String, actix_web::error::Error> {
     let mut pub_params_map_mut = data.pub_params.write().unwrap();
-    println!("Setting up public parameters... ({} bytes)", body.len());
     assert_eq!(body.len(), data.params.setup_bytes());
     let pub_params = PublicParameters::deserialize(&data.params, &body);
 

@@ -354,6 +354,7 @@ fn params_with_moduli(params: &Params, moduli: &Vec<u64>) -> Params {
         params.db_dim_2,
         params.instances,
         params.db_item_size,
+        params.version,
     )
 }
 

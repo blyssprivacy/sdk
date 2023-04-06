@@ -77,6 +77,8 @@ pub struct Params {
     pub db_dim_2: usize,
     pub instances: usize,
     pub db_item_size: usize,
+
+    pub version: usize,
 }
 
 impl Params {
@@ -244,6 +246,7 @@ impl Params {
         db_dim_2: usize,
         instances: usize,
         db_item_size: usize,
+        version: usize,
     ) -> Self {
         assert!(q2_bits >= MIN_Q2_BITS);
 
@@ -297,6 +300,7 @@ impl Params {
             db_dim_2,
             instances,
             db_item_size,
+            version,
         }
     }
 }
