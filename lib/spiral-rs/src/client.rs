@@ -226,7 +226,7 @@ impl<'a> PublicParameters<'a> {
             idx += deserialize_vec_polymatrix_rng(&mut v_expansion_left, &data[idx..], &mut rng);
 
             let mut v_expansion_right = v_expansion_left.clone();
-            if params.t_exp_right != params.t_exp_left {
+            if params.version == 0 || params.t_exp_right != params.t_exp_left {
                 let mut v_expansion_right_tmp =
                     new_vec_raw(params, params.stop_round() + 1, 2, params.t_exp_right);
                 idx += deserialize_vec_polymatrix_rng(
@@ -553,7 +553,8 @@ impl<'a> Client<'a> {
         // Params for packing
         let gadget_conv = build_gadget(params, 1, params.t_conv);
         let gadget_conv_ntt = to_ntt_alloc(&gadget_conv);
-        for i in 0..1 {
+        let num_packing_mats = if params.version == 0 { params.n } else { 1 };
+        for i in 0..num_packing_mats {
             let scaled = scalar_multiply_alloc(&sk_reg_ntt, &gadget_conv_ntt);
             let mut ag = PolyMatrixNTT::zero(params, params.n, params.t_conv);
             ag.copy_into(&scaled, i, 0);
@@ -561,10 +562,12 @@ impl<'a> Client<'a> {
             pp.v_packing.push(w);
         }
 
-        let scaled = &sk_gsw_ntt * &gadget_conv_ntt;
-        let scaled_rotated = shift_rows_by_one(&scaled);
-        let w = self.encrypt_matrix_gsw(&scaled_rotated, &mut rng, &mut rng_pub);
-        pp.v_packing.push(w);
+        if params.version > 0 {
+            let scaled = &sk_gsw_ntt * &gadget_conv_ntt;
+            let scaled_rotated = shift_rows_by_one(&scaled);
+            let w = self.encrypt_matrix_gsw(&scaled_rotated, &mut rng, &mut rng_pub);
+            pp.v_packing.push(w);
+        }
 
         if params.expand_queries {
             // Params for expansion
@@ -575,7 +578,7 @@ impl<'a> Client<'a> {
                 &mut rng_pub,
             ));
 
-            if params.t_exp_right != params.t_exp_left {
+            if params.version == 0 || params.t_exp_right != params.t_exp_left {
                 pp.v_expansion_right = Some(self.generate_expansion_params(
                     params.stop_round() + 1,
                     params.t_exp_right,

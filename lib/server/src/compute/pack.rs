@@ -98,7 +98,7 @@ pub fn pack_v1<'a>(
     result
 }
 
-pub fn pack_v0<'a>(
+pub fn pack<'a>(
     params: &'a Params,
     v_ct: &[PolyMatrixRaw],
     v_w: &[PolyMatrixNTT],

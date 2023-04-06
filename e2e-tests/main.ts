@@ -5,10 +5,13 @@ const { spawn } = require('child_process');
 
 process.removeAllListeners('warning');
 
-function spawnChildProcess(): Promise<ChildProcess> {
+function spawnChildProcess(paramsFilename: string): Promise<ChildProcess> {
   let seen = '';
   return new Promise(resolve => {
-    const child = spawn(process.argv[2]);
+    const child = spawn(process.argv[2], [
+      '8008',
+      process.argv[3] + '/' + paramsFilename
+    ]);
     process.on('exit', function () {
       child.kill();
     });
@@ -24,14 +27,22 @@ function spawnChildProcess(): Promise<ChildProcess> {
   });
 }
 
-async function main() {
-  const child = await spawnChildProcess();
+const paramsFilenames = ['v0.json', 'v1.json'];
+
+async function runTests(paramsFilename: string) {
+  const child = await spawnChildProcess(paramsFilename);
 
   await simple();
 
-  console.log('Tests completed successfully.');
-
   child.kill();
+}
+
+async function main() {
+  for (const paramsFilename of paramsFilenames) {
+    await runTests(paramsFilename);
+    console.log('Completed tests for ' + paramsFilename);
+  }
+  console.log('All tests completed successfully.');
 }
 
 main();
