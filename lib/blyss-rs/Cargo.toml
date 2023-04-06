@@ -1,0 +1,33 @@
+[package]
+name = "blyss-rs"
+version = "0.2.0"
+edition = "2021"
+authors = [
+    "Samir Menon <samir@blyss.dev>",
+    "Neil Movva <neil@blyss.dev>"]
+homepage = "https://blyss.dev"
+repository = "https://github.com/blyssprivacy/sdk"
+description = "Rust client for Blyss"
+keywords = ["privacy", "fhe", "cryptography"]
+categories = ["cryptography"]
+readme = "README.md"
+license = "MIT"
+
+[dependencies]
+base64 = "0.21.0"
+hex = "0.4.3"
+reqwest = { version = "0.11.16", default-features = false, features = ["multipart", "rustls-tls"] }
+serde = { version = "1.0.159", features = ["derive"] }
+serde_json = "1.0.95"
+spiral-rs = { version = "0.2.0" }
+thiserror = "1.0.40"
+tokio = { version = "1", features = ["macros"] }
+ruint = { version = "1.2.0", features = ["serde", "num-bigint", "ark-ff"] }
+bzip2-rs = "0.1.2"
+
+[dev-dependencies]
+semaphore = { git = "https://github.com/worldcoin/semaphore-rs" }
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true

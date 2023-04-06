@@ -7,6 +7,9 @@ Abstracts all functionality offered by Blyss services.
 
 from typing import Any, Optional, Union
 import requests
+import httpx
+import gzip
+import asyncio
 import json
 import logging
 import base64
@@ -58,6 +61,24 @@ def _get_data(api_key: Optional[str], url: str) -> bytes:
     return resp.content
 
 
+async def _async_get_data(
+    api_key: Optional[str], url: str, decode_json: bool = True
+) -> Any:
+    headers = {}
+    if api_key:
+        headers["x-api-key"] = api_key
+
+    logging.info(f"GET {url} {headers}")
+    async with httpx.AsyncClient() as client:
+        r = await client.get(url, headers=headers)
+    _check_http_error(r)
+
+    if decode_json:
+        return r.json()
+    else:
+        return r.content
+
+
 def _get_data_json(api_key: str, url: str) -> dict[Any, Any]:
     """Perform an HTTP GET request, returning a JSON-parsed dict"""
     return json.loads(_get_data(api_key, url))
@@ -94,7 +115,37 @@ def _post_form_data(url: str, fields: dict[Any, Any], data: bytes):
     _check_http_error(resp)
 
 
-# API
+async def _async_post_data(
+    api_key: str,
+    url: str,
+    data: Union[str, bytes],
+    compress: bool = True,
+    decode_json: bool = True,
+) -> Any:
+    """Perform an async HTTP POST request, returning a JSON-parsed dict response"""
+    headers = {
+        "x-api-key": api_key,
+    }
+    if type(data) == str:
+        headers["Content-Type"] = "application/json"
+        data = data.encode("utf-8")
+    else:
+        headers["Content-Type"] = "application/octet-stream"
+    assert type(data) == bytes
+
+    if compress:
+        # apply gzip compression to data before sending
+        data = gzip.compress(data)
+        headers["Content-Encoding"] = "gzip"
+
+    async with httpx.AsyncClient(timeout=httpx.Timeout(5, read=None)) as client:
+        r = await client.post(url, content=data, headers=headers)
+
+    _check_http_error(r)  # type: ignore
+    if decode_json:
+        return r.json()
+    else:
+        return r.content
 
 
 class API:
@@ -136,6 +187,13 @@ class API:
         """
         return _get_data_json(
             self.api_key, self._service_url_for("/" + uuid + CHECK_PATH)
+        )
+
+    async def async_check(self, uuid: str) -> dict[Any, Any]:
+        return await _async_get_data(
+            self.api_key,
+            self._service_url_for("/" + uuid + CHECK_PATH),
+            decode_json=True,
         )
 
     def list_buckets(self) -> dict[Any, Any]:
@@ -204,6 +262,12 @@ class API:
         """Write some data to this bucket."""
         _post_data(self.api_key, self._url_for(bucket_name, WRITE_PATH), data)
 
+    async def async_write(self, bucket_name: str, data: str):
+        """Write JSON payload to this bucket."""
+        await _async_post_data(
+            self.api_key, self._url_for(bucket_name, WRITE_PATH), data, decode_json=True
+        )
+
     def delete_key(self, bucket_name: str, key: str):
         """Delete a key in this bucket."""
         _post_data(
@@ -214,3 +278,12 @@ class API:
         """Privately read data from this bucket."""
         val = _post_data(self.api_key, self._url_for(bucket_name, READ_PATH), data)
         return base64.b64decode(val)
+
+    async def async_private_read(self, bucket_name: str, data: bytes) -> bytes:
+        """Privately read data from this bucket."""
+        val: bytes = await _async_post_data(
+            self.api_key, self._url_for(bucket_name, READ_PATH), data, decode_json=False
+        )
+        # AWS APIGW encodes its responses as base64
+        return base64.b64decode(val)
+        # return self.private_read(bucket_name, data)

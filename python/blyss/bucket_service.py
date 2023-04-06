@@ -32,7 +32,9 @@ class BucketService:
         self.api = api.API(self.api_config["api_key"], self.service_endpoint)
 
     def connect(
-        self, bucket_name: str, secret_seed: Optional[str] = None
+        self,
+        bucket_name: str,
+        secret_seed: Optional[str] = None,
     ) -> bucket.Bucket:
         """Connect to an existing Blyss bucket.
 
@@ -47,9 +49,21 @@ class BucketService:
         """
         if secret_seed is None:
             secret_seed = seed.get_random_seed()
-
         b = bucket.Bucket(self.api, bucket_name, secret_seed=secret_seed)
         return b
+
+    def connect_async(
+        self, bucket_name: str, secret_seed: Optional[str] = None
+    ) -> bucket.AsyncBucket:
+        """Connect to an existing Blyss bucket, using an asyncio-ready interface.
+
+        Args:
+            see connect()
+
+        Returns:
+            bucket.Bucket: An object representing a client to the Blyss bucket.
+        """
+        return bucket.AsyncBucket(self.api, bucket_name, secret_seed=secret_seed)
 
     def create(
         self,
