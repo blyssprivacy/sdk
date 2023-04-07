@@ -1,10 +1,12 @@
 import type { Bucket } from '@blyss/sdk';
 const blyss = require('@blyss/sdk/node');
 
-export default async function main() {
+export default async function main(port: string) {
   const bucket: Bucket = await blyss.Bucket.initializeLocal(
-    'http://localhost:8008'
+    'http://localhost:' + port
   );
+
+  console.log(bucket.metadata);
 
   await bucket.write({
     Ohio: 'Columbus',

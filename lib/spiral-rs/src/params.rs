@@ -146,7 +146,7 @@ impl Params {
     pub fn setup_bytes(&self) -> usize {
         let mut sz_polys = 0;
 
-        let num_packing_mats = if self.version == 0 { self.n } else { 1 };
+        let num_packing_mats = if self.version == 0 { self.n } else { 2 };
         let packing_sz = ((self.n + 1) - 1) * self.t_conv;
         sz_polys += num_packing_mats * packing_sz;
 
