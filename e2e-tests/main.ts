@@ -11,7 +11,6 @@ function spawnChildProcess(
 ): Promise<ChildProcess> {
   let seen = '';
   return new Promise(resolve => {
-    console.log(process.argv[3] + '/' + paramsFilename);
     const child = spawn(process.argv[2], [
       port,
       process.argv[3] + '/' + paramsFilename
