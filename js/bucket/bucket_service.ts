@@ -6,6 +6,7 @@ export interface BucketParameters {
   /** The maximum item size this bucket supports */
   maxItemSize: MaxItemSizeIdentifier;
   keyStoragePolicy: kspIdentifier;
+  version: number;
 }
 
 type MaxItemSizeIdentifier = '100B' | '1KB' | '10KB';
@@ -13,7 +14,8 @@ type kspIdentifier = 'none' | 'bloom' | 'full';
 
 const DEFAULT_BUCKET_PARAMETERS: BucketParameters = {
   maxItemSize: '1KB',
-  keyStoragePolicy: 'bloom'
+  keyStoragePolicy: 'bloom',
+  version: 1
 };
 
 const BLYSS_BUCKET_URL = 'https://beta.api.blyss.dev';
