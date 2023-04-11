@@ -8,6 +8,7 @@ use crate::aligned_memory::*;
 use crate::arith::*;
 use crate::client::PublicParameters;
 use crate::client::Query;
+use crate::client::CLIENT_TEST;
 use crate::gadget::*;
 use crate::params::*;
 use crate::poly::*;
@@ -545,7 +546,7 @@ pub fn expand_query<'a>(
 
     let v_conversion = &public_params.v_conversion.as_ref().unwrap()[0];
     let v_w_left = public_params.v_expansion_left.as_ref().unwrap();
-    let v_w_right = public_params.v_expansion_right.as_ref().unwrap();
+    let v_w_right = public_params.v_expansion_right.as_ref().unwrap_or(v_w_left);
     let v_neg1 = params.get_v_neg1();
 
     let mut v_reg_inp = Vec::with_capacity(dim0);
@@ -589,6 +590,63 @@ pub fn expand_query<'a>(
     (v_reg_reoriented, v_folding)
 }
 
+pub fn variance(v: Vec<i64>) -> f64 {
+    let n = v.len();
+    let mean = v.iter().map(|x| *x as f64).sum::<f64>() / n as f64;
+    println!("mean: {}", mean.abs().log2());
+    let mut sum = 0.0;
+    for i in 0..n {
+        // println!(":: {}", (v[i] as f64).abs().log2());
+        sum += (v[i] as f64 - mean).powi(2);
+    }
+    sum / n as f64
+}
+
+fn dec_to_raw<'a>(
+    params: &'a Params,
+    poly: &PolyMatrixRaw<'a>,
+    target: &PolyMatrixRaw<'a>,
+) -> PolyMatrixRaw<'a> {
+    let mut out = PolyMatrixRaw::zero(params, poly.rows, poly.cols);
+    let scale_k = params.modulus / params.pt_modulus;
+    let mut noises = Vec::new();
+    for z in 0..poly.data.len() {
+        let mut val = poly.data[z] as i64;
+        if val > (params.modulus / 2) as i64 {
+            val -= params.modulus as i64;
+        }
+        let mut val_rounded = f64::round(val as f64 / scale_k as f64) as i64;
+
+        let mut target_val = target.data[z] as i64;
+        if target_val >= (params.pt_modulus / 2) as i64 {
+            target_val -= params.pt_modulus as i64;
+        }
+        let target_val_scaled = target_val * scale_k as i64;
+
+        let mut noise = val - target_val_scaled;
+        // this seems fragile
+        if noise.abs() >= (params.pt_modulus * scale_k / 2) as i64 {
+            noise -= (params.pt_modulus * scale_k) as i64;
+        }
+        noises.push(noise);
+
+        if val_rounded < 0 {
+            val_rounded += params.pt_modulus as i64;
+        }
+
+        let result_val = (val_rounded as u64) % params.modulus;
+
+        out.data[z] = result_val;
+    }
+
+    println!(
+        "Noise width (s^2, log2): {}",
+        (2.0 * std::f64::consts::PI * variance(noises)).log2()
+    );
+
+    out
+}
+
 pub fn process_query(
     params: &Params,
     public_params: &PublicParameters,
@@ -621,7 +679,7 @@ pub fn process_query(
     }
     let v_folding_neg = get_v_folding_neg(params, &v_folding);
 
-    let v_packed_ct = (0..params.instances)
+    let v_packed_ct: Vec<PolyMatrixRaw> = (0..params.instances)
         .into_par_iter()
         .map(|instance| {
             let mut intermediate = Vec::with_capacity(num_per);
@@ -651,6 +709,24 @@ pub fn process_query(
                 }
 
                 fold_ciphertexts(params, &mut intermediate_raw, &v_folding, &v_folding_neg);
+
+                if instance == 0 && trial == 0 {
+                    unsafe {
+                        if let Some((sk_reg, target)) = &CLIENT_TEST {
+                            let ct = intermediate_raw[0].ntt();
+                            let ct_subset = ct.submatrix(0, 0, 2, 1);
+                            let dec = (&sk_reg.ntt() * &ct_subset).raw();
+                            let dec_raw = dec_to_raw(params, &dec, target);
+                            for i in 0..params.poly_len {
+                                assert_eq!(
+                                    dec_raw.data[i], target.data[i],
+                                    "{} != {} at {}",
+                                    dec_raw.data[i], target.data[i], i
+                                );
+                            }
+                        }
+                    }
+                }
 
                 v_ct.push(intermediate_raw[0].clone());
             }
@@ -919,16 +995,39 @@ mod test {
     fn full_protocol_is_correct_for_params(params: &Params) {
         let mut seeded_rng = get_seeded_rng();
 
-        let target_idx = seeded_rng.gen::<usize>() % (params.db_dim_1 + params.db_dim_2);
+        let target_idx = seeded_rng.gen::<usize>() % (1 << (params.db_dim_1 + params.db_dim_2));
+        println!("target_idx: {}", target_idx);
 
         let mut client = Client::init(&params);
 
         let public_params = client.generate_keys();
+        let pp_serialized = public_params.serialize();
+        println!("pp size: {}", pp_serialized.len());
+        let pp = PublicParameters::deserialize(params, &pp_serialized);
         let query = client.generate_query(target_idx);
 
         let (corr_item, db) = generate_random_db_and_get_item(params, target_idx);
 
-        let response = process_query(params, &public_params, &query, db.as_slice());
+        unsafe {
+            let params_static = Box::leak(Box::new(params.clone()));
+            let mut corr_item_static =
+                PolyMatrixRaw::zero(params_static, corr_item.rows, corr_item.cols);
+            corr_item_static
+                .data
+                .as_mut_slice()
+                .copy_from_slice(corr_item.data.as_slice());
+            let sk_reg_full = matrix_with_identity(client.get_sk_reg());
+            let mut sk_reg_static =
+                PolyMatrixRaw::zero(params_static, sk_reg_full.rows, sk_reg_full.cols);
+            sk_reg_static
+                .data
+                .as_mut_slice()
+                .copy_from_slice(sk_reg_full.as_slice());
+            CLIENT_TEST = Some((sk_reg_static, corr_item_static));
+        }
+
+        let response = process_query(params, &pp, &query, db.as_slice());
+        println!("response size: {}", response.len());
 
         let result = client.decode_response(response.as_slice());
 
@@ -936,6 +1035,7 @@ mod test {
         let corr_result = corr_item.to_vec(p_bits, params.modp_words_per_chunk());
 
         assert_eq!(result.len(), corr_result.len());
+        println!("res len: {}", result.len());
 
         for z in 0..corr_result.len() {
             assert_eq!(result[z], corr_result[z], "at {:?}", z);
@@ -951,22 +1051,21 @@ mod test {
     #[ignore]
     fn larger_full_protocol_is_correct() {
         let cfg_expand = r#"
-            {
-            'n': 2,
-            'nu_1': 10,
-            'nu_2': 6,
-            'p': 512,
-            'q2_bits': 21,
-            's_e': 85.83255142749422,
-            't_gsw': 10,
-            't_conv': 4,
-            't_exp_left': 16,
-            't_exp_right': 56,
-            'instances': 1,
-            'db_item_size': 9000 }
+        {
+            "n": 2,
+            "nu_1": 9,
+            "nu_2": 5,
+            "p": 256,
+            "q2_bits": 22,
+            "t_gsw": 7,
+            "t_conv": 3,
+            "t_exp_left": 5,
+            "t_exp_right": 5,
+            "instances": 4,
+            "db_item_size": 32768
+        }
         "#;
         let cfg = cfg_expand;
-        let cfg = cfg.replace("'", "\"");
         let params = params_from_json(&cfg);
 
         full_protocol_is_correct_for_params(&params);

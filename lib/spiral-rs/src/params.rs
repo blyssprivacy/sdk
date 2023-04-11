@@ -77,6 +77,8 @@ pub struct Params {
     pub db_dim_2: usize,
     pub instances: usize,
     pub db_item_size: usize,
+
+    pub version: usize,
 }
 
 impl Params {
@@ -144,13 +146,18 @@ impl Params {
     pub fn setup_bytes(&self) -> usize {
         let mut sz_polys = 0;
 
+        let num_packing_mats = if self.version == 0 { self.n } else { 2 };
         let packing_sz = ((self.n + 1) - 1) * self.t_conv;
-        sz_polys += self.n * packing_sz;
+        sz_polys += num_packing_mats * packing_sz;
 
         if self.expand_queries {
             let expansion_left_sz = self.g() * self.t_exp_left;
-            let expansion_right_sz = (self.stop_round() + 1) * self.t_exp_right;
+            let mut expansion_right_sz = (self.stop_round() + 1) * self.t_exp_right;
             let conversion_sz = 2 * self.t_conv;
+
+            if self.version > 0 && self.t_exp_left == self.t_exp_right {
+                expansion_right_sz = 0;
+            }
 
             sz_polys += expansion_left_sz + expansion_right_sz + conversion_sz;
         }
@@ -230,6 +237,7 @@ impl Params {
         db_dim_2: usize,
         instances: usize,
         db_item_size: usize,
+        version: usize,
     ) -> Self {
         assert!(q2_bits >= MIN_Q2_BITS);
 
@@ -283,6 +291,7 @@ impl Params {
             db_dim_2,
             instances,
             db_item_size,
+            version,
         }
     }
 }

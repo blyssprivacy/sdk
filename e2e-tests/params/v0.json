@@ -1,0 +1,13 @@
+{
+  "n": 4,
+  "nu_1": 9,
+  "nu_2": 5,
+  "p": 256,
+  "q2_bits": 20,
+  "t_gsw": 8,
+  "t_conv": 4,
+  "t_exp_left": 8,
+  "t_exp_right": 56,
+  "instances": 1,
+  "db_item_size": 32768
+}

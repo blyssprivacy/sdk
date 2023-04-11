@@ -2781,9 +2781,9 @@ checksum = "6e63cff320ae2c57904679ba7cb63280a3dc4613885beafb148ee7bf9aa9042d"
 
 [[package]]
 name = "spiral-rs"
-version = "0.2.0"
+version = "0.2.1-alpha.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "11c882c5e2503335a71e25919bf77075a2c363db8a0599b5fb43e6ceb6e21a91"
+checksum = "77b2cfe533cd3e3eee8c0b06cd77ba58649fc553e70de0129efac55a246db33b"
 dependencies = [
  "getrandom",
  "rand",

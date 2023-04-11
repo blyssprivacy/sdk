@@ -10,6 +10,26 @@ use spiral_rs::poly::*;
 
 use rayon::prelude::*;
 
+pub fn get_v_folding_neg<'a>(
+    params: &'a Params,
+    v_folding: &Vec<PolyMatrixNTT<'a>>,
+) -> Vec<PolyMatrixNTT<'a>> {
+    let gadget_ntt = build_gadget(params, 2, 2 * params.t_gsw).ntt(); // TODO: make this better
+
+    let v_folding_neg = (0..params.db_dim_2)
+        .into_iter()
+        .map(|i| {
+            let mut ct_gsw_inv = PolyMatrixRaw::zero(params, 2, 2 * params.t_gsw);
+            invert(&mut ct_gsw_inv, &v_folding[i].raw());
+            let mut ct_gsw_neg = PolyMatrixNTT::zero(params, 2, 2 * params.t_gsw);
+            add(&mut ct_gsw_neg, &gadget_ntt, &ct_gsw_inv.ntt());
+            ct_gsw_neg
+        })
+        .collect();
+
+    v_folding_neg
+}
+
 pub fn coefficient_expansion(
     v: &mut Vec<PolyMatrixNTT>,
     g: usize,
@@ -252,7 +272,7 @@ pub fn expand_query<'a>(
 
     let v_conversion = &public_params.v_conversion.as_ref().unwrap()[0];
     let v_w_left = public_params.v_expansion_left.as_ref().unwrap();
-    let v_w_right = public_params.v_expansion_right.as_ref().unwrap();
+    let v_w_right = public_params.v_expansion_right.as_ref().unwrap_or(v_w_left);
     let v_neg1 = params.get_v_neg1();
 
     let mut v_reg_inp = Vec::with_capacity(dim0);
@@ -408,7 +428,7 @@ mod test {
         let test_ct = client.encrypt_matrix_reg(&sigma.ntt(), &mut rng, &mut rng_pub);
 
         let v_w_left = public_params.v_expansion_left.unwrap();
-        let v_w_right = public_params.v_expansion_right.unwrap();
+        let v_w_right = public_params.v_expansion_right.unwrap_or(v_w_left.clone());
         coefficient_expansion(
             &mut v,
             params.g(),

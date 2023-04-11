@@ -170,22 +170,22 @@ async fn index(data: web::Data<ServerState>) -> String {
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
     let cfg_expand = r#"{
-        "n": 4,
+        "n": 2,
         "nu_1": 9,
         "nu_2": 5,
         "p": 256,
-        "q2_bits": 20,
-        "t_gsw": 8,
-        "t_conv": 4,
-        "t_exp_left": 8,
-        "t_exp_right": 56,
-        "instances": 1,
+        "q2_bits": 22,
+        "t_gsw": 7,
+        "t_conv": 3,
+        "t_exp_left": 5,
+        "t_exp_right": 5,
+        "instances": 4,
         "db_item_size": 32768
     }"#;
 
     let args: Vec<String> = env::args().collect();
     let mut port = "8008";
-    let mut params_json = "";
+    let mut params_json = "".to_owned();
     let params;
     if args.len() == 4 {
         // [port] [num_items_log2] [item_size_bytes]
@@ -196,14 +196,14 @@ async fn main() -> std::io::Result<()> {
         params = get_params_from_store(target_num_log2, item_size_bytes);
     } else if args.len() == 3 {
         // [port] [params.json]
-        port = &args[2];
+        port = &args[1];
         let inp_params_fname = &args[2];
-        let params_json = fs::read_to_string(inp_params_fname).unwrap();
 
+        params_json = fs::read_to_string(inp_params_fname).unwrap();
         params = params_from_json(&params_json);
     } else {
         // none
-        params_json = cfg_expand;
+        params_json = cfg_expand.to_owned();
         params = params_from_json(cfg_expand);
     }
 
@@ -218,7 +218,7 @@ async fn main() -> std::io::Result<()> {
         db: RwLock::new(db),
         rows: RwLock::new(rows),
         pub_params: RwLock::new(HashMap::new()),
-        params_json: params_json.to_owned(),
+        params_json,
         version: RwLock::new(0),
     };
     let state = web::Data::new(server_state);

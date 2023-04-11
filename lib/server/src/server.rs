@@ -47,6 +47,8 @@ pub fn process_query(
             .collect();
     }
 
+    let v_folding_neg = get_v_folding_neg(params, &v_folding);
+
     let trials = params.n * params.n;
     let v_cts: Vec<PolyMatrixRaw> = (0..(params.instances * trials))
         .into_par_iter()
@@ -78,7 +80,7 @@ pub fn process_query(
                 from_ntt(&mut intermediate_raw[i], &intermediate[i]);
             }
 
-            fold_ciphertexts(params, &mut intermediate_raw, &v_folding);
+            fold_ciphertexts(params, &mut intermediate_raw, &v_folding, &v_folding_neg);
             // println!("fold took {} us", now.elapsed().as_micros());
 
             intermediate_raw[0].clone()
@@ -137,25 +139,27 @@ mod test {
     use rand::Rng;
     use spiral_rs::client::*;
     use spiral_rs::util;
+    use std::time::Instant;
 
     use crate::db::loading::*;
 
     fn get_params() -> Params {
         let cfg = r#"
-            {'n': 4,
-            'nu_1': 9,
-            'nu_2': 5,
-            'p': 256,
-            'q2_bits': 20,
-            't_gsw': 9,
-            't_conv': 4,
-            't_exp_left': 8,
-            't_exp_right': 28,
-            'instances': 2,
-            'db_item_size': 65536 }
+        {
+            "n": 2,
+            "nu_1": 9,
+            "nu_2": 5,
+            "p": 256,
+            "q2_bits": 22,
+            "t_gsw": 7,
+            "t_conv": 3,
+            "t_exp_left": 5,
+            "t_exp_right": 5,
+            "instances": 4,
+            "db_item_size": 32768
+        }
         "#;
-        util::params_from_json(&cfg.replace("'", "\""))
-        // util::get_fast_expansion_testing_params()
+        util::params_from_json(&cfg)
     }
 
     fn full_protocol_is_correct_for_params(params: &Params) {
@@ -163,26 +167,31 @@ mod test {
 
         let target_idx = seeded_rng.gen::<usize>() % (1 << (params.db_dim_1 + params.db_dim_2));
         println!("targeting index {}", target_idx);
-        let further_dims = params.db_dim_2;
-        let idx_dim0 = target_idx / (1 << further_dims);
-        println!("idx_dim0 {}", idx_dim0);
 
         let mut client = Client::init(&params);
 
         let public_params = client.generate_keys();
+        let pp_sz = public_params.serialize().len();
         let query = client.generate_query(target_idx);
 
-        let dummy_items = 1000; //params.num_items();
-        let (corr_item, db) = generate_fake_sparse_db_and_get_item(params, target_idx, dummy_items);
+        let dummy_items = 10000; //params.num_items();
+        let (corr_db_item, db) =
+            generate_fake_sparse_db_and_get_item(params, target_idx, dummy_items);
 
         let now = Instant::now();
         let response = process_query(params, &public_params, &query, &db);
+        println!(
+            "pub params: {} bytes ({} actual)",
+            params.setup_bytes(),
+            pp_sz
+        );
         println!("processing took {} us", now.elapsed().as_micros());
+        println!("response: {} bytes", response.len());
 
         let result = client.decode_response(response.as_slice());
 
         let p_bits = log2_ceil(params.pt_modulus) as usize;
-        let corr_result = corr_item.to_vec(p_bits, params.modp_words_per_chunk());
+        let corr_result = corr_db_item.to_vec(p_bits, params.modp_words_per_chunk());
 
         assert_eq!(result.len(), corr_result.len());
 

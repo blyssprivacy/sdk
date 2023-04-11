@@ -77,6 +77,7 @@ pub fn get_test_params() -> Params {
         6,
         1,
         2048,
+        0,
     )
 }
 
@@ -97,6 +98,7 @@ pub fn get_short_keygen_params() -> Params {
         6,
         1,
         2048,
+        0,
     )
 }
 
@@ -210,6 +212,7 @@ pub const fn get_empty_params() -> Params {
         db_dim_2: 0,
         instances: 0,
         db_item_size: 0,
+        version: 0,
     }
 }
 
@@ -236,6 +239,9 @@ pub fn params_from_json_obj(v: &Value) -> Params {
         db_item_size = instances * n * n;
         db_item_size = db_item_size * 2048 * log2_ceil(p) as usize / 8;
     }
+
+    let version = v["version"].as_u64().unwrap_or(0) as usize;
+
     Params::init(
         2048,
         &vec![268369921u64, 249561089u64],
@@ -252,6 +258,7 @@ pub fn params_from_json_obj(v: &Value) -> Params {
         db_dim_2,
         instances,
         db_item_size,
+        version,
     )
 }
 
@@ -385,6 +392,7 @@ mod test {
             6,
             1,
             2048,
+            0,
         );
         assert_eq!(b, c);
     }
