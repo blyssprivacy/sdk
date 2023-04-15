@@ -7,7 +7,7 @@ the compiled Rust code.
 """
 
 
-from typing import Any
+from typing import Any, Optional
 from . import blyss, seed  # type: ignore
 
 # NB:   There are many "type: ignore"s on purpose. Type information
@@ -82,7 +82,7 @@ class BlyssLib:
         """
         return bytes(blyss.decode_response(self.inner_client, response))  # type: ignore
 
-    def extract_result(self, key: str, data: bytes) -> bytes:
+    def extract_result(self, key: str, data: bytes) -> Optional[bytes]:
         """Extracts the value for a given key, given the plaintext data from a response.
 
         Args:
@@ -92,7 +92,11 @@ class BlyssLib:
         Returns:
             bytes: The plaintext data corresponding to the given key.
         """
-        return bytes(blyss.extract_result(self.inner_client, key, data))  # type: ignore
+        r = blyss.extract_result(self.inner_client, key, data)
+        if r is None:
+            return None
+        else:
+            return bytes(r)
 
     def __init__(self, params: str, secret_seed: str):
         """Initializes a new BlyssLib instance.

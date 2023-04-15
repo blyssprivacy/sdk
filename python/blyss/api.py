@@ -18,7 +18,9 @@ from blyss.req_compression import get_session
 from blyss.bloom import BloomFilter
 
 CREATE_PATH = "/create"
+MODIFY_PATH = "/modify"
 DESTROY_PATH = "/destroy"
+CLEAR_PATH = "/clear"
 CHECK_PATH = "/check"
 LIST_BUCKETS_PATH = "/list-buckets"
 DELETE_PATH = "/delete"
@@ -208,6 +210,16 @@ class API:
     def _url_for(self, bucket_name: str, path: str) -> str:
         return self.service_endpoint + "/" + bucket_name + path
 
+    def modify(self, bucket_name: str, data_json: str) -> dict[Any, Any]:
+        """Modify existing bucket.
+         
+        Args:
+            data_json (str): same as create.
+        """
+        return _post_data_json(
+            self.api_key, self._url_for(bucket_name, MODIFY_PATH), data_json
+        )
+
     def meta(self, bucket_name: str) -> dict[Any, Any]:
         """Get metadata about a bucket.
 
@@ -257,6 +269,10 @@ class API:
     def destroy(self, bucket_name: str):
         """Destroy this bucket."""
         _post_data(self.api_key, self._url_for(bucket_name, DESTROY_PATH), "")
+
+    def clear(self, bucket_name: str):
+        """Delete all keys in this bucket."""
+        _post_data(self.api_key, self._url_for(bucket_name, CLEAR_PATH), "")
 
     def write(self, bucket_name: str, data: bytes):
         """Write some data to this bucket."""

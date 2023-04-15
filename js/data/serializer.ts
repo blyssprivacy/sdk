@@ -48,7 +48,12 @@ export function mergeUint8Arrays(
   return mergedArray;
 }
 
-function getObjectAsBytes(obj: any): Uint8Array {
+/**
+ * Safely serializes an object into bytes.
+ *
+ * @param obj - Object to serialize.
+ */
+export function serialize(obj: any): Uint8Array {
   if (obj instanceof ArrayBuffer || obj instanceof Uint8Array) {
     return obj instanceof ArrayBuffer ? new Uint8Array(obj) : obj;
   }
@@ -59,67 +64,21 @@ function getObjectAsBytes(obj: any): Uint8Array {
   return encoder.encode(objJson);
 }
 
-function getHeaderBytes(obj: any, metadata?: any): Uint8Array {
-  if (!metadata && (obj instanceof ArrayBuffer || obj instanceof Uint8Array)) {
-    return varint.encode(0);
-  } else {
-    const encoder = new TextEncoder();
-    const headerData = { contentType: 'application/json', ...metadata };
-    const header = JSON.stringify(headerData);
-    const headerVarInt = varint.encode(header.length);
-    return mergeUint8Arrays(headerVarInt, encoder.encode(header));
-  }
-}
-
 /**
- * Safely serializes an object (and optional metadta) into bytes.
- *
- * @param obj - Object to serialize.
- */
-export function serialize(obj: any, metadata?: any): Uint8Array {
-  const headerBytes = getHeaderBytes(obj, metadata);
-  const objAsBytes = getObjectAsBytes(obj);
-
-  return mergeUint8Arrays(headerBytes, objAsBytes);
-}
-
-export interface DataWithMetadata {
-  data: any;
-  metadata?: any;
-}
-
-/**
- * Safely deserializes an object, and possibly any associated metadata, from the
- * input bytes.
+ * Safely deserializes an object from input bytes.
+ * If the input bytes are valid JSON, the object will be deserialized as JSON.
+ * Otherwise, the input bytes will be returned as-is (Uint8Array).
  *
  * @param data - Bytes to deserialize.
  */
-export function deserialize(data: Uint8Array): DataWithMetadata {
-  const { value, bytesProcessed } = varint.decode(data);
-  const headerLength = value;
-  let i = bytesProcessed;
-  if (headerLength === 0) {
-    return { data: data.slice(i) };
+export function deserialize(data: Uint8Array): any {
+  try {
+    const decoder = new TextDecoder();
+    const obj = JSON.parse(decoder.decode(data));
+    return obj;
+  } catch (e) {
+    return data;
   }
-
-  const decoder = new TextDecoder();
-  const headerBytes = data.slice(i, i + headerLength);
-  i += headerLength;
-  const header = JSON.parse(decoder.decode(headerBytes));
-
-  const dataBytes = data.slice(i);
-
-  let obj;
-  if (header.contentType === 'application/json') {
-    obj = JSON.parse(decoder.decode(dataBytes));
-  } else {
-    obj = dataBytes;
-  }
-
-  return {
-    data: obj,
-    metadata: header
-  };
 }
 
 /** Concatenate the input Uint8Arrays. */

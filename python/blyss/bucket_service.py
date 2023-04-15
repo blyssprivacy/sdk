@@ -3,7 +3,7 @@ from . import bucket, api, seed
 import json
 
 BLYSS_BUCKET_URL = "https://beta.api.blyss.dev"
-DEFAULT_BUCKET_PARAMETERS = {"maxItemSize": 1000}
+DEFAULT_BUCKET_PARAMETERS = {"maxItemSize": 1000, "keyStoragePolicy": "bloom"}
 
 ApiConfig = dict[str, str]
 
