@@ -1,4 +1,5 @@
 import os
+import sys
 import random
 import hashlib
 import traceback
@@ -32,11 +33,8 @@ def generateBucketName() -> str:
     return f"api-tester-{tag:#0{6}x}"
 
 
-async def main(endpoint: str):
-    api_key = os.environ.get("BLYSS_API_KEY", None)
-    if not api_key:
-        raise Exception("BLYSS_API_KEY environment variable is not set")
-    print("Using key: " + api_key + " to connect to " + endpoint)
+async def main(endpoint: str, api_key: str):
+    print("Testing Blyss server at " + endpoint)
     client = blyss.Client({"endpoint": endpoint, "api_key": api_key})
     # generate random string for bucket name
     bucketName = generateBucketName()
@@ -101,4 +99,16 @@ async def main(endpoint: str):
 if __name__ == "__main__":
     import asyncio
 
-    asyncio.run(main("https://dev2.api.blyss.dev"))
+    api_key = os.environ.get("BLYSS_STAGING_API_KEY", None)
+    endpoint = os.environ.get("BLYSS_STAGING_SERVER", None)
+    if len(sys.argv) > 1:
+        print("Using endpoint from command line")
+        endpoint = sys.argv[1]
+    if len(sys.argv) > 2:
+        print("Using api_key from command line")
+        api_key = sys.argv[2]
+    print("DEBUG", api_key, endpoint)
+    assert endpoint is not None
+    assert api_key is not None
+
+    asyncio.run(main(endpoint, api_key))
