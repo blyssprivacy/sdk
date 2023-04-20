@@ -14,7 +14,15 @@ on:
       - 'examples/**'
       - '**.md'
       - 'js/**'
+  release:
+    types: [published]
   workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Should packages be published to PyPI?'
+        required: true
+        default: false
+        type: boolean
 
 permissions:
   contents: read
@@ -120,7 +128,7 @@ jobs:
   publish:
     name: Publish
     runs-on: ubuntu-latest
-    if: github.event_name == 'release' && github.event.action == 'published'
+    if: github.event_name == 'release' && github.event.action == 'published' || ${{ inputs.publish }}
     needs: [linux, macos, windows, sdist]
     steps:
       - uses: actions/download-artifact@v3
