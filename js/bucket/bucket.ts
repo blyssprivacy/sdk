@@ -3,7 +3,6 @@ import { base64ToBytes, getRandomSeed } from '../client/seed';
 import { decompress } from '../compression/bz2_decompress';
 import { bloomLookup } from '../data/bloom';
 import {
-  DataWithMetadata,
   concatBytes,
   deserialize,
   deserializeChunks,
@@ -40,7 +39,7 @@ export class Bucket {
   readonly api: Api;
 
   /** The name of this bucket. */
-  readonly name: string;
+  name: string;
 
   /**
    * The secret seed for this instance of the client, which can be saved and
@@ -110,7 +109,7 @@ export class Bucket {
     try {
       decompressedResult = decompress(decryptedResult);
     } catch (e) {
-      console.error('decompress error', e);
+      console.error(`key ${key} not found (decompression failed)`);
     }
     if (decompressedResult === null) {
       return null;
@@ -120,7 +119,7 @@ export class Bucket {
     try {
       extractedResult = this.lib.extractResult(key, decompressedResult);
     } catch (e) {
-      console.error('extraction error', e);
+      console.error(`key ${key} not found (extraction failed)`);
     }
     if (extractedResult === null) {
       return null;
@@ -151,7 +150,7 @@ export class Bucket {
 
   private async performPrivateReads(
     keys: string[]
-  ): Promise<DataWithMetadata[]> {
+  ): Promise<any[]> {
     if (!this.uuid || !this.check(this.uuid)) {
       await this.setup();
     }
@@ -185,7 +184,7 @@ export class Bucket {
     return endResults;
   }
 
-  private async performPrivateRead(key: string): Promise<DataWithMetadata> {
+  private async performPrivateRead(key: string): Promise<any> {
     return (await this.performPrivateReads([key]))[0];
   }
 
@@ -320,6 +319,15 @@ export class Bucket {
     return await this.api.meta(this.name);
   }
 
+  /** Renames this bucket, leaving all data and other bucket settings intact. */
+  async rename(newBucketName: string): Promise<BucketMetadata> {
+    const bucketCreateReq = {
+      name: newBucketName
+    };
+    await this.api.modify(this.name, JSON.stringify(bucketCreateReq));
+    this.name = newBucketName;
+  }
+
   /** Gets info on all keys in this bucket. */
   async listKeys(): Promise<KeyInfo[]> {
     this.ensureSpiral();
@@ -333,14 +341,9 @@ export class Bucket {
    *   key-value pairs to write. Keys must be strings, and values may be any
    *   JSON-serializable value or a Uint8Array. The maximum size of a key is
    *   1024 UTF-8 bytes.
-   * @param {{ [key: string]: any }} [metadata] - An optional object containing
-   *   metadata. Each key of this object should also be a key of
-   *   `keyValuePairs`, and the value should be some metadata object to store
-   *   with the values being written.
    */
   async write(
-    keyValuePairs: { [key: string]: any },
-    metadata?: { [key: string]: any }
+    keyValuePairs: { [key: string]: any }
   ) {
     this.ensureSpiral();
 
@@ -348,17 +351,18 @@ export class Bucket {
     for (const key in keyValuePairs) {
       if (Object.prototype.hasOwnProperty.call(keyValuePairs, key)) {
         const value = keyValuePairs[key];
-        let valueMetadata = undefined;
-        if (metadata && Object.prototype.hasOwnProperty.call(metadata, key)) {
-          valueMetadata = metadata[key];
-        }
-        const valueBytes = serialize(value, valueMetadata);
+        const valueBytes = serialize(value);
         const keyBytes = new TextEncoder().encode(key);
         const serializedKeyValue = wrapKeyValue(keyBytes, valueBytes);
         data.push(serializedKeyValue);
+        // const kv = {
+        //   key: key,
+        //   value: Buffer.from(valueBytes).toString('base64')
+        // }
       }
     }
     const concatenatedData = concatBytes(data);
+    // const concatenatedData = serialize(data);
     await this.api.write(this.name, concatenatedData);
   }
 
@@ -386,6 +390,14 @@ export class Bucket {
   }
 
   /**
+   * Clears the contents of the entire bucket, and all data inside of it. This action is
+   * permanent and irreversible.
+   */
+  async clearEntireBucket() {
+    await this.api.clear(this.name);
+  }
+
+  /**
    * Privately reads the supplied key from the bucket, returning the value
    * corresponding to the key.
    *
@@ -398,26 +410,11 @@ export class Bucket {
     this.ensureSpiral();
 
     if (Array.isArray(key)) {
-      return (await this.performPrivateReads(key)).map(r => r.data);
+      return (await this.performPrivateReads(key));
     } else {
       const result = await this.performPrivateRead(key);
-      return result ? result.data : null;
+      return result ? result : null;
     }
-  }
-
-  /**
-   * Privately reads the supplied key from the bucket, returning the value and
-   * metadata corresponding to the key.
-   *
-   * No entity, including the Blyss service, should be able to determine which
-   * key this method was called for.
-   *
-   * @param {string} key - The key to _privately_ retrieve the value of.
-   */
-  async privateReadWithMetadata(key: string): Promise<DataWithMetadata> {
-    this.ensureSpiral();
-
-    return await this.performPrivateRead(key);
   }
 
   /**
@@ -437,7 +434,7 @@ export class Bucket {
     this.ensureSpiral();
 
     if (keys.length < BLOOM_CUTOFF) {
-      return (await this.performPrivateReads(keys)).map(x => x.data);
+      return (await this.performPrivateReads(keys));
     }
 
     const bloomFilter = await this.api.bloom(this.name);
@@ -451,7 +448,7 @@ export class Bucket {
     if (!retrieveValues) {
       return matches;
     }
-    return (await this.performPrivateReads(matches)).map(x => x.data);
+    return (await this.performPrivateReads(matches));
   }
 
   /**

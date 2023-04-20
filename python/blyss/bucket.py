@@ -118,7 +118,7 @@ class Bucket:
                     "content-type": "application/octet-stream",
                 }
                 row.append(fmt)
-                row_size += int(72 + len(key) + len(value_str))
+                row_size += int(24 + len(key) + len(value_str) + 48)
 
             # if the new row doesn't fit into the current chunk, start a new one
             if current_chunk_size + row_size > _MAX_PAYLOAD:
@@ -211,6 +211,14 @@ class Bucket:
     def list_keys(self) -> dict[str, Any]:
         """Gets info on all keys in this bucket."""
         return self.api.list_keys(self.name)
+    
+    def rename(self, new_name: str):
+        """Renames this bucket."""
+        bucket_create_req = {
+            "name": new_name,
+        }
+        self.api.modify(self.name, json.dumps(bucket_create_req))
+        self.name = new_name
 
     def write(self, kv_pairs: dict[str, Union[tuple[Any, Optional[Any]], Any]]):
         """Writes the supplied key-value pair(s) into the bucket.
@@ -250,6 +258,14 @@ class Bucket:
     def destroy_entire_bucket(self):
         """Destroys the entire bucket. This action is permanent and irreversible."""
         self.api.destroy(self.name)
+
+    def clear_entire_bucket(self):
+        """Deletes all keys in this bucket. This action is permanent and irreversible.
+        
+        Differs from destroy in that the bucket's metadata 
+        (e.g. permissions, PIR scheme parameters, and clients' setup data) are preserved.
+        """
+        self.api.clear(self.name)
 
     def private_read(self, keys: Union[str, list[str]]) -> Union[bytes, list[bytes]]:
         """Privately reads the supplied key from the bucket,

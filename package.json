@@ -36,6 +36,7 @@
     "start": "webpack-dev-server --open",
     "test": "jest",
     "e2e-tests": "npm link && cd lib/server && cargo build --release && cd ../../e2e-tests && npm link @blyss/sdk && npx ts-node main.ts ../lib/server/target/release/server params",
+    "api-tests": "npm run --silent build && npm link && cd e2e-tests && npm link @blyss/sdk && npx ts-node api.ts",
     "lint": "eslint . --ext .ts"
   },
   "devDependencies": {

@@ -23,7 +23,7 @@ describe('serialization/deserialization routines', () => {
     0,
     null
   ])(`should be inverses for: %s`, val => {
-    expect(deserialize(serialize(val)).data).toEqual(val);
+    expect(deserialize(serialize(val))).toEqual(val);
   });
 });
 

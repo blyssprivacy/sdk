@@ -4,6 +4,8 @@ import { gzip } from '../compression/pako';
 import { BloomFilter, bloomFilterFromBytes } from '../data/bloom';
 
 const CREATE_PATH = '/create';
+const MODIFY_PATH = '/modify';
+const CLEAR_PATH = '/clear';
 const DESTROY_PATH = '/destroy';
 const CHECK_PATH = '/check';
 const DELETE_PATH = '/delete';
@@ -216,6 +218,18 @@ class Api {
   }
 
   /**
+   * Modify a bucket's properties.
+   *
+   * @param bucketName The name of the bucket.
+   * @param dataJson A JSON-encoded string of the bucket metadata. Supports the same fields as `create()`.
+   * @returns Bucket metadata after update.
+   */
+  async modify(bucketName: string, dataJson: string): Promise<BucketMetadata> {
+    return await postData(this.apiKey, this.urlFor(bucketName, MODIFY_PATH), dataJson, true);
+  }
+
+
+  /**
    * Get the Bloom filter for keys in this bucket. The Bloom filter contains all
    * keys ever inserted into this bucket; it does not remove deleted keys.
    *
@@ -299,6 +313,16 @@ class Api {
     await postData(
       this.apiKey,
       this.urlFor(bucketName, DESTROY_PATH),
+      '',
+      false
+    );
+  }
+
+  /** Clear contents of this bucket. */
+  async clear(bucketName: string) {
+    await postData(
+      this.apiKey,
+      this.urlFor(bucketName, CLEAR_PATH),
       '',
       false
     );
