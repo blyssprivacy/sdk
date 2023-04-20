@@ -10,8 +10,6 @@ on:
       - 'examples/**'
       - '**.md'
       - 'python/**'
-  release:
-    types: [published]
   workflow_dispatch:
     inputs:
       publish:
@@ -69,7 +67,7 @@ jobs:
   client-publish:
     name: Publish JavaScript SDK
     runs-on: ubuntu-latest
-    if: github.event_name == 'release' && github.event.action == 'published' || ${{ inputs.publish }}
+    if: ${{ inputs.publish }}
     needs: [client-build]
     steps:
       - uses: actions/checkout@v3
