@@ -15,3 +15,12 @@ dependencies = [
     "httpx",
 ]
 dynamic = ["version"]
+description = "An SDK for private data retrieval, built on homomorphic encryption."
+keywords = ["privacy", "homomorphic", "encryption", "cryptography"]
+
+[project.urls]
+homepage = "https://blyss.dev"
+documentation = "https://docs.blyss.dev"
+repository = "https://github.com/blyssprivacy/sdk"
+changelog = "https://github.com/blyssprivacy/sdk/releases"
+
