@@ -25,7 +25,7 @@ dependencies = [
 
 [[package]]
 name = "blyss-client-python"
-version = "0.1.8"
+version = "0.1.9"
 dependencies = [
  "pyo3",
  "spiral-rs",
