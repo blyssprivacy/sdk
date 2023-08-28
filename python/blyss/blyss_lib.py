@@ -90,7 +90,7 @@ class BlyssLib:
             data (bytes): The plaintext data from the PIR response.
 
         Returns:
-            bytes: The plaintext data corresponding to the given key.
+            bytes: The plaintext data corresponding to the given key, or None if the key was not found.
         """
         r = blyss.extract_result(self.inner_client, key, data)
         if r is None:

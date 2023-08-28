@@ -1,8 +1,8 @@
 name: Build Python SDK
 
 env:
-  BLYSS_STAGING_SERVER: https://dev2.api.blyss.dev
-  BLYSS_STAGING_API_KEY: Gh1pz1kEiNa1npEdDaRRvM1LsVypM1u2x1YbGb54
+  BLYSS_STAGING_SERVER: ${{ vars.BLYSS_STAGING_SERVER }}
+  BLYSS_STAGING_API_KEY: ${{ secrets.BLYSS_STAGING_API_KEY }}
 
 on:
   push:
@@ -57,6 +57,15 @@ jobs:
         with:
           name: wheels
           path: python/dist
+
+      - name: Build Python docs
+        run: pip install pdoc && pdoc -o docs/static/python -d google -n python/blyss --no-search
+
+      - name: Upload Python docs
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: docs/static/python
+
 
   windows:
     runs-on: windows-latest

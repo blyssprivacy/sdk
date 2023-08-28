@@ -56,9 +56,18 @@ You can also use the Blyss SDK completely locally.
 2. Run the server by entering `lib/server` and running `cargo run --release`. The server will run on `localhost:8008` by default.
 3. Run the client by entering `examples/node-local` and running `npx ts-node main.ts`. This will perform some writes and then a private read to your bucket.
 
-## Installing as a package
+## Install
 
+### JavaScript / Node
 To use the Blyss SDK in an existing TypeScript project, install it with `npm install @blyss/sdk`. Then, import the client with `import { Client } from '@blyss/sdk';`. If you're using SDK in Node, and prefer not to use ESM, you can instead import it as `const blyss = require('@blyss/sdk/node')`.
+
+### Python
+#### From PyPI:
+`pip install --upgrade blyss`
+
+#### From repo:
+1. `cd python` from repo root.
+2. `pip install --upgrade .`
 
 ## Examples
 
@@ -90,8 +99,8 @@ The Node.js example shows how to use the Blyss SDK in server-side JS. Node 18+ i
 
 ### Python
 
-1. Enter `examples/python`.
-2. Run `pip install blyss`.
+1. Install blyss.
+2. Enter `examples/python`.
 3. Run `python main.py`.
 
 ## Documentation

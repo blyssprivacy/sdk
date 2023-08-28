@@ -9,11 +9,11 @@ export interface BucketParameters {
   version: number;
 }
 
-type MaxItemSizeIdentifier = '100B' | '1KB' | '10KB';
+type MaxItemSizeIdentifier = '100' | '1000' | '10000';
 type kspIdentifier = 'none' | 'bloom' | 'full';
 
 const DEFAULT_BUCKET_PARAMETERS: BucketParameters = {
-  maxItemSize: '1KB',
+  maxItemSize: '1000',
   keyStoragePolicy: 'bloom',
   version: 1
 };

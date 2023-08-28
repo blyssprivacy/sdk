@@ -14,7 +14,6 @@ import json
 import logging
 import base64
 
-from blyss.req_compression import get_session
 from blyss.bloom import BloomFilter
 
 CREATE_PATH = "/create"
@@ -33,19 +32,26 @@ READ_PATH = "/private-read"
 
 
 class ApiException(Exception):
+    """Exception raised when an API call to the Blyss service fails."""
+
     def __init__(self, message: str, code: int):
-        """Initialize ApiException with message."""
         self.message = message
+        """Error message returned by the server."""
         self.code = code
+        """HTTP status code returned by the server."""
         super().__init__(message)
 
 
-def _check_http_error(resp: requests.Response):
+def _check_http_error(resp: requests.Response | httpx.Response):
     """Throws an ApiException with message on any unsuccessful HTTP response."""
     status_code = resp.status_code
     if status_code < 200 or status_code > 299:
+        try:
+            errmsg = resp.text
+        except:
+            errmsg = f"<undecodable response body, size {len(resp.content)} bytes>"
         raise ApiException(
-            f"Request failed, with unsuccessful HTTP status code {status_code} and message '{resp.content}'",
+            errmsg,
             status_code,
         )
 
@@ -97,7 +103,10 @@ def _post_data(api_key: str, url: str, data: Union[bytes, str]) -> bytes:
     logging.info(f"POST {url} (length: {len(data)} bytes)")
     resp = None
     if type(data) == bytes:
-        resp = get_session().post(url, data, headers=headers)
+        # compress data before sending
+        zdata = gzip.compress(data)
+        headers["Content-Encoding"] = "gzip"
+        resp = requests.post(url, zdata, headers=headers)
     else:
         resp = requests.post(url, data, headers=headers)
     _check_http_error(resp)
@@ -212,7 +221,7 @@ class API:
 
     def modify(self, bucket_name: str, data_json: str) -> dict[Any, Any]:
         """Modify existing bucket.
-         
+
         Args:
             data_json (str): same as create.
         """
@@ -262,9 +271,9 @@ class API:
 
         return prelim_result
 
-    def list_keys(self, bucket_name: str) -> dict[str, Any]:
+    def list_keys(self, bucket_name: str) -> list[str]:
         """List all keys in this bucket."""
-        return _get_data_json(self.api_key, self._url_for(bucket_name, LIST_KEYS_PATH))
+        return _get_data_json(self.api_key, self._url_for(bucket_name, LIST_KEYS_PATH))  # type: ignore
 
     def destroy(self, bucket_name: str):
         """Destroy this bucket."""

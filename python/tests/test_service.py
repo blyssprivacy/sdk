@@ -38,7 +38,7 @@ async def main(endpoint: str, api_key: str):
     client = blyss.Client({"endpoint": endpoint, "api_key": api_key})
     # generate random string for bucket name
     bucketName = generateBucketName()
-    client.create(bucketName)
+    client.create(bucketName, usage_hints={"maxItemSize": 40_000})
     bucket = client.connect_async(bucketName)
     print(bucket.info())
 
@@ -52,17 +52,21 @@ async def main(endpoint: str, api_key: str):
 
     # read a random key
     testKey = random.choice(localKeys)
-    value = await bucket.private_read([testKey])
-    verify_read(testKey, value[0])
-    print(f"Read key {testKey}")
+    value = (await bucket.private_read([testKey]))[0]
+    assert value is not None
+    verify_read(testKey, value)
+    print(f"Read key {testKey}, got {value.hex()[:8]}[...]")
 
     # delete testKey from the bucket, and localData.
     bucket.delete_key(testKey)
     localKeys.remove(testKey)
-    value = await bucket.private_read([testKey])
-    # TODO: why aren't deletes reflected in the next read?
-    # assert value is None
-    print(f"Deleted key {testKey}")
+    value = (await bucket.private_read([testKey]))[0]
+    if value is None:
+        print(f"Deleted key {testKey}")
+    else:
+        # this happens only sometimes??
+        print("ERROR: delete not reflected in read!")
+        print(f"Read deleted key {testKey} and got {value.hex()[:8]}[...]")
 
     # clear all keys
     bucket.clear_entire_bucket()
@@ -74,8 +78,14 @@ async def main(endpoint: str, api_key: str):
     await bucket.write({k: key_to_gold_value(k, itemSize) for k in localKeys})
     print(f"Wrote {N} keys")
 
+    # read a random key
+    testKey = random.choice(localKeys)
+    value = (await bucket.private_read([testKey]))[0]
+    assert value is not None
+    verify_read(testKey, value)
+
     # test if clear took AFTER the new write
-    value = await bucket.private_read([testKey])
+    value = (await bucket.private_read([testKey]))[0]
     if value is not None:
         print(f"ERROR: {testKey} was not deleted or cleared!")
 
@@ -87,8 +97,9 @@ async def main(endpoint: str, api_key: str):
 
     # read a random key
     testKey = random.choice(localKeys)
-    value = await bucket.private_read([testKey])
-    verify_read(testKey, value[0])
+    value = (await bucket.private_read([testKey]))[0]
+    assert value is not None
+    verify_read(testKey, value)
     print(f"Read key {testKey}")
 
     # destroy the bucket
