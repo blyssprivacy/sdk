@@ -59,12 +59,16 @@ jobs:
           path: python/dist
 
       - name: Build Python docs
-        run: pip install pdoc && pdoc -o docs/static/python -d google -n python/blyss --no-search
+        working-directory: python
+        shell: bash
+        run: |
+          pip install pdoc
+          pdoc -o pdoc -d google -n ./blyss --no-search
 
       - name: Upload Python docs
         uses: actions/upload-pages-artifact@v2
         with:
-          path: docs/static/python
+          path: python/pdoc
 
 
   windows:
