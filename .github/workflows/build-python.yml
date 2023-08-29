@@ -63,6 +63,8 @@ jobs:
         if: matrix.target == 'x86_64'
         working-directory: python
         shell: bash
+        # TODO: pdoc is documenting the installed module, not the source folder.
+        # pdoc's import-based docs don't play well with maturin's structure.
         run: |
           pip install pdoc
           pdoc -o pdoc -d google -n blyss --no-search
@@ -142,7 +144,7 @@ jobs:
   publish:
     name: Publish
     runs-on: ubuntu-latest
-    if: ${{ inputs.publish }}
+    if: ${{ inputs.publish || github.ref == 'refs/heads/main' }}
     needs: [linux, macos, windows, sdist]
     steps:
       - uses: actions/download-artifact@v3
