@@ -33,27 +33,34 @@ def _chunk_parser(raw_data: bytes) -> Iterator[bytes]:
 
 
 class Bucket:
-    """A class representing a client to a single Blyss bucket."""
+    """Interface to a single Blyss bucket."""
 
     def __init__(self, api: api.API, name: str, secret_seed: Optional[str] = None):
-        """Initialize a client for a single, existing Blyss bucket.
+        """
+        @private
+        Initialize a client for a single, existing Blyss bucket.
 
         Args:
-            api (api.API): A target API to send all underlying API calls to.
-            name (str): The name of the bucket.
-            secret_seed (Optional[str], optional): An optional secret seed to
-            initialize the client with. A random one will be generated if not
-            supplied. Defaults to None.
+            api: A target API to send all underlying API calls to.
+            name: The name of the bucket.
+            secret_seed: An optional secret seed to initialize the client with.
+                         A random one will be generated if not supplied.
         """
-        self.api = api
-        self.name = name
-        self.metadata = self.api.meta(self.name)
-        self.secret_seed = seed.get_random_seed()
+        self.name: str = name
+        """Name of the bucket. See [bucket naming rules](https://docs.blyss.dev/docs/buckets#names)."""
+
+        # Internal attributes
+        self._api = api
+        self._metadata = self._api.meta(self.name)
         if secret_seed:
-            self.secret_seed = secret_seed
-        self.lib = BlyssLib(json.dumps(self.metadata["pir_scheme"]), self.secret_seed)
-        self.public_uuid: Optional[str] = None
-        self.exfil: Any = None
+            self._secret_seed = secret_seed
+        else:
+            self._secret_seed = seed.get_random_seed()
+        self._lib = BlyssLib(
+            json.dumps(self._metadata["pir_scheme"]), self._secret_seed
+        )
+        self._public_uuid: Optional[str] = None
+        self._exfil: Any = None  # used for benchmarking
 
     def _check(self, uuid: str) -> bool:
         """Checks if the server has the given UUID.
@@ -65,7 +72,7 @@ class Bucket:
             bool: Whether the server has the given UUID.
         """
         try:
-            self.api.check(uuid)
+            self._api.check(uuid)
             return True
         except api.ApiException as e:
             if e.code == 404:
@@ -75,7 +82,7 @@ class Bucket:
 
     async def _async_check(self, uuid: str) -> bool:
         try:
-            await self.api.async_check(uuid)
+            await self._api.async_check(uuid)
             return True
         except api.ApiException as e:
             if e.code == 404:
@@ -91,7 +98,7 @@ class Bucket:
         # 1. Bin keys by row index
         keys_by_index: dict[int, list[str]] = {}
         for k in kv_pairs.keys():
-            i = self.lib.get_row(k)
+            i = self._lib.get_row(k)
             if i in keys_by_index:
                 keys_by_index[i].append(k)
             else:
@@ -136,9 +143,11 @@ class Bucket:
         return kv_chunks
 
     def _generate_query_stream(self, keys: list[str]) -> bytes:
+        assert self._public_uuid
         # generate encrypted queries
         queries: list[bytes] = [
-            self.lib.generate_query(self.public_uuid, self.lib.get_row(k)) for k in keys
+            self._lib.generate_query(self._public_uuid, self._lib.get_row(k))
+            for k in keys
         ]
         # interleave the queries with their lengths (uint64_t)
         query_lengths = [len(q).to_bytes(8, "little") for q in queries]
@@ -150,145 +159,134 @@ class Bucket:
         return multi_query
 
     def _unpack_query_result(
-        self, keys: list[str], raw_result: bytes, parse_metadata: bool = True
-    ) -> list[bytes]:
+        self, keys: list[str], raw_result: bytes, ignore_errors=False
+    ) -> list[Optional[bytes]]:
         retrievals = []
         for key, result in zip(keys, _chunk_parser(raw_result)):
-            decrypted_result = self.lib.decode_response(result)
-            decompressed_result = bz2.decompress(decrypted_result)
-            extracted_result = self.lib.extract_result(key, decompressed_result)
-            if parse_metadata:
-                output = serializer.deserialize(extracted_result)
+            if len(result) == 0:
+                # error in processing this query
+                if ignore_errors:
+                    extracted_result = None
+                else:
+                    raise RuntimeError(f"Failed to process query for key {key}.")
             else:
-                output = extracted_result
-            retrievals.append(output)
+                decrypted_result = self._lib.decode_response(result)
+                decompressed_result = bz2.decompress(decrypted_result)
+                extracted_result = self._lib.extract_result(key, decompressed_result)
+            retrievals.append(extracted_result)
         return retrievals
 
-    def _private_read(self, keys: list[str]) -> list[bytes]:
+    def _private_read(self, keys: list[str]) -> list[Optional[bytes]]:
         """Performs the underlying private retrieval.
 
         Args:
             keys (str): A list of keys to retrieve.
 
         Returns:
-            tuple[bytes, Optional[dict]]: Returns a tuple of (value, optional_metadata).
+            a list of values (bytes) corresponding to keys. None for keys not found.
         """
-        if not self.public_uuid or not self._check(self.public_uuid):
+        if not self._public_uuid or not self._check(self._public_uuid):
             self.setup()
-            assert self.public_uuid
+            assert self._public_uuid
 
         multi_query = self._generate_query_stream(keys)
 
         start = time.perf_counter()
-        multi_result = self.api.private_read(self.name, multi_query)
-        self.exfil = time.perf_counter() - start
+        multi_result = self._api.private_read(self.name, multi_query)
+        self._exfil = time.perf_counter() - start
 
         retrievals = self._unpack_query_result(keys, multi_result)
 
         return retrievals
 
-    def setup(self, uuid: Optional[str] = None):
+    def setup(self):
         """Prepares this bucket client for private reads.
 
         This method will be called automatically by :method:`read`, but
         clients may call it explicitly prior to make subsequent
-        :method:`read` calls faster.
+        `private_read` calls faster.
 
         Can upload significant amounts of data (1-10 MB).
+
         """
-        if uuid is not None and self._check(uuid):
-            self.lib.generate_keys()
-            self.public_uuid = uuid
-        else:
-            public_params = self.lib.generate_keys_with_public_params()
-            setup_resp = self.api.setup(self.name, bytes(public_params))
-            self.public_uuid = setup_resp["uuid"]
+        public_params = self._lib.generate_keys_with_public_params()
+        setup_resp = self._api.setup(self.name, bytes(public_params))
+        self._public_uuid = setup_resp["uuid"]
 
     def info(self) -> dict[Any, Any]:
-        """Gets info on this bucket from the service."""
-        return self.api.meta(self.name)
+        """Fetch this bucket's properties from the service, such as access permissions and PIR scheme parameters."""
+        return self._api.meta(self.name)
 
-    def list_keys(self) -> dict[str, Any]:
-        """Gets info on all keys in this bucket."""
-        return self.api.list_keys(self.name)
-    
+    def list_keys(self) -> list[str]:
+        """List all key strings in this bucket. Only available if bucket was created with keyStoragePolicy="full"."""
+        return self._api.list_keys(self.name)
+
     def rename(self, new_name: str):
-        """Renames this bucket."""
+        """Rename this bucket to new_name."""
         bucket_create_req = {
             "name": new_name,
         }
-        self.api.modify(self.name, json.dumps(bucket_create_req))
+        self._api.modify(self.name, json.dumps(bucket_create_req))
         self.name = new_name
 
-    def write(self, kv_pairs: dict[str, Union[tuple[Any, Optional[Any]], Any]]):
+    def write(self, kv_pairs: dict[str, bytes]):
         """Writes the supplied key-value pair(s) into the bucket.
 
-        To supply metadata for a key, set the value in
-        the dict to a tuple of (value_to_write, metadata).
-
         Args:
-            kv_pairs (dict[str, Union[tuple[Any, Optional[Any]], Any]]):
-                A dictionary containing the key-value pairs to write.
-                Keys must be strings, and values may be any JSON-serializable value,
-                bytes, or a tuple (see above).
+            kv_pairs: A dictionary of key-value pairs to write into the bucket.
+                      Keys must be UTF8 strings, and values may be arbitrary bytes.
         """
         concatenated_kv_items = b""
         for key, value in kv_pairs.items():
-            if isinstance(value, tuple):
-                value, metadata = value
-            else:
-                _ = value
-                metadata = None
-
-            serialized_value = serializer.serialize(value, metadata)
-            concatenated_kv_items += serializer.wrap_key_val(
-                key.encode("utf-8"), serialized_value
-            )
+            concatenated_kv_items += serializer.wrap_key_val(key.encode("utf-8"), value)
         # single call to API endpoint
-        self.api.write(self.name, concatenated_kv_items)
+        self._api.write(self.name, concatenated_kv_items)
 
     def delete_key(self, key: str):
-        """Deletes the supplied key from the bucket.
+        """Deletes a single key-value pair from the bucket.
 
         Args:
-            key (str): The key to delete.
+            key: The key to delete.
         """
-        self.api.delete_key(self.name, key)
+        self._api.delete_key(self.name, key)
 
     def destroy_entire_bucket(self):
         """Destroys the entire bucket. This action is permanent and irreversible."""
-        self.api.destroy(self.name)
+        self._api.destroy(self.name)
 
     def clear_entire_bucket(self):
         """Deletes all keys in this bucket. This action is permanent and irreversible.
-        
-        Differs from destroy in that the bucket's metadata 
+
+        Differs from destroy in that the bucket's metadata
         (e.g. permissions, PIR scheme parameters, and clients' setup data) are preserved.
         """
-        self.api.clear(self.name)
+        self._api.clear(self.name)
 
-    def private_read(self, keys: Union[str, list[str]]) -> Union[bytes, list[bytes]]:
-        """Privately reads the supplied key from the bucket,
-        returning the value corresponding to the key.
+    def private_read(
+        self, keys: Union[str, list[str]]
+    ) -> Union[Optional[bytes], list[Optional[bytes]]]:
+        """Privately reads the supplied key(s) from the bucket,
+        and returns the corresponding value(s).
 
-        No entity, including the Blyss service, should be able to
-        determine which key(s) this method was called for.
+        Data will be accessed using fully homomorphic encryption, designed to
+        make it impossible for any entity (including the Blyss service!) to
+        determine which key(s) are being read.
 
         Args:
-            keys (str): A key or list of keys to privately read.
-                        If a list of keys is supplied,
-                        results will be returned in the same order.
+            keys: A key or list of keys to privately retrieve.
+                  If a list of keys is supplied,
+                  results will be returned in the same order.
 
         Returns:
-            bytes: The value found for the key in the bucket,
-                   or None if the key was not found.
+            For each key, the value found for the key in the bucket,
+            or None if the key was not found.
         """
         single_query = False
         if isinstance(keys, str):
             keys = [keys]
             single_query = True
 
-        results = [r[0] for r in self._private_read(keys)]
+        results = [r if r is not None else None for r in self._private_read(keys)]
         if single_query:
             return results[0]
 
@@ -297,47 +295,64 @@ class Bucket:
     def private_key_intersect(self, keys: list[str]) -> list[str]:
         """Privately intersects the given set of keys with the keys in this bucket,
         returning the keys that intersected. This is generally slower than a single
-        private read.
+        private read, but much faster than making a private read for each key.
 
-        No entity, including the Blyss service, should be able to determine which
-        keys this method was called for.
+        Has the same privacy guarantees as private_read - zero information is leaked
+        about keys being intersected.
+
+        Requires that the bucket was created with key_storage_policy of "bloom" or "full".
+        If the bucket cannot support private bloom filter lookups, an exception will be raised.
 
         Args:
-            keys (list[str]): The keys to _privately_ intersect the value of.
+            keys: A list of keys to privately intersect with this bucket.
         """
-        bloom_filter = self.api.bloom(self.name)
+        bloom_filter = self._api.bloom(self.name)
         present_keys = list(filter(bloom_filter.lookup, keys))
         return present_keys
 
 
 class AsyncBucket(Bucket):
+    """Asyncio-compatible version of Bucket."""
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-    async def write(self, kv_pairs: dict[str, bytes], MAX_CONCURRENCY=8):
+    async def write(self, kv_pairs: dict[str, bytes], CONCURRENCY=4):
+        """
+        Functionally equivalent to Bucket.write.
+
+        Handles chunking and parallel submission of writes, up to CONCURRENCY.
+        For maximum performance, call this function with as much data as possible.
+        Data races are possible with parallel writes, but will never corrupt data.
+
+        Args:
+            CONCURRENCY: The number of concurrent server writes. Maximum is 8.
+        """
+        CONCURRENCY = min(CONCURRENCY, 8)
+
         # Split the key-value pairs into chunks not exceeding max payload size.
         kv_chunks = self._split_into_chunks(kv_pairs)
         # Make one write call per chunk, while respecting a max concurrency limit.
-        sem = asyncio.Semaphore(MAX_CONCURRENCY)
+        sem = asyncio.Semaphore(CONCURRENCY)
 
         async def _paced_writer(chunk):
             async with sem:
-                await self.api.async_write(self.name, json.dumps(chunk))
+                await self._api.async_write(self.name, json.dumps(chunk))
 
         _tasks = [asyncio.create_task(_paced_writer(c)) for c in kv_chunks]
         await asyncio.gather(*_tasks)
 
-    async def private_read(self, keys: list[str]) -> list[bytes]:
-        if not self.public_uuid or not await self._async_check(self.public_uuid):
+    async def private_read(self, keys: list[str]) -> list[Optional[bytes]]:
+        if not self._public_uuid or not await self._async_check(self._public_uuid):
             self.setup()
-            assert self.public_uuid
+            assert self._public_uuid
 
         multi_query = self._generate_query_stream(keys)
 
         start = time.perf_counter()
-        multi_result = await self.api.async_private_read(self.name, multi_query)
-        self.exfil = time.perf_counter() - start
+        multi_result = await self._api.async_private_read(self.name, multi_query)
+        self._exfil = time.perf_counter() - start
 
-        retrievals = self._unpack_query_result(keys, multi_result, parse_metadata=False)
+        retrievals = self._unpack_query_result(keys, multi_result)
 
         return retrievals

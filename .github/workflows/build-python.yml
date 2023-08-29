@@ -1,8 +1,8 @@
 name: Build Python SDK
 
 env:
-  BLYSS_STAGING_SERVER: https://dev2.api.blyss.dev
-  BLYSS_STAGING_API_KEY: Gh1pz1kEiNa1npEdDaRRvM1LsVypM1u2x1YbGb54
+  BLYSS_STAGING_SERVER: ${{ vars.BLYSS_STAGING_SERVER }}
+  BLYSS_STAGING_API_KEY: ${{ secrets.BLYSS_STAGING_API_KEY }}
 
 on:
   push:
@@ -57,6 +57,24 @@ jobs:
         with:
           name: wheels
           path: python/dist
+
+      # only run docs on target x86_64
+      - name: Build Python docs
+        if: matrix.target == 'x86_64'
+        working-directory: python
+        shell: bash
+        # TODO: pdoc is documenting the installed module, not the source folder.
+        # pdoc's import-based docs don't play well with maturin's structure.
+        run: |
+          pip install pdoc
+          pdoc -o pdoc -d google -n blyss --no-search
+
+      - name: Upload Python docs
+        if: matrix.target == 'x86_64'
+        uses: actions/upload-pages-artifact@v2
+        with:
+          path: python/pdoc
+
 
   windows:
     runs-on: windows-latest
@@ -126,7 +144,7 @@ jobs:
   publish:
     name: Publish
     runs-on: ubuntu-latest
-    if: ${{ inputs.publish }}
+    if: ${{ inputs.publish || github.ref == 'refs/heads/main' }}
     needs: [linux, macos, windows, sdist]
     steps:
       - uses: actions/download-artifact@v3

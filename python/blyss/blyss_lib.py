@@ -8,6 +8,7 @@ the compiled Rust code.
 
 
 from typing import Any, Optional
+from .seed import seed_from_string
 from . import blyss, seed  # type: ignore
 
 # NB:   There are many "type: ignore"s on purpose. Type information
@@ -29,7 +30,7 @@ class BlyssLib:
 
         blyss.generate_keys(  # type: ignore
             self.inner_client,
-            seed.seed_from_string(self.secret_seed),
+            seed_from_string(self.secret_seed),
             False,
         )
 
@@ -44,7 +45,7 @@ class BlyssLib:
 
         return blyss.generate_keys(  # type: ignore
             self.inner_client,
-            seed.seed_from_string(self.secret_seed),
+            seed_from_string(self.secret_seed),
             True,
         )
 
@@ -90,7 +91,7 @@ class BlyssLib:
             data (bytes): The plaintext data from the PIR response.
 
         Returns:
-            bytes: The plaintext data corresponding to the given key.
+            bytes: The plaintext data corresponding to the given key, or None if the key was not found.
         """
         r = blyss.extract_result(self.inner_client, key, data)
         if r is None:

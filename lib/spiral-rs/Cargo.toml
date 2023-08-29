@@ -12,6 +12,7 @@ keywords = ["privacy", "fhe", "cryptography"]
 categories = ["cryptography"]
 readme = "README.md"
 license = "MIT"
+rust-version = "1.70.0"
 
 [features]
 server = ["rayon"]

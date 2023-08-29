@@ -3,19 +3,23 @@ from . import bucket, api, seed
 import json
 
 BLYSS_BUCKET_URL = "https://beta.api.blyss.dev"
-DEFAULT_BUCKET_PARAMETERS = {"maxItemSize": 1000, "keyStoragePolicy": "bloom"}
+DEFAULT_BUCKET_PARAMETERS = {
+    "maxItemSize": 1000,
+    "keyStoragePolicy": "none",
+    "version": 1,
+}
 
 ApiConfig = dict[str, str]
 
 
 class BucketService:
-    """A class representing a client to the Blyss bucket service."""
+    """A client to the hosted Blyss bucket service. Allows creation, deletion, and modification of buckets."""
 
     def __init__(self, api_config: Union[str, ApiConfig]):
         """Initialize a client of the Blyss bucket service.
 
         Args:
-            api_config (Union[str, ApiConfig]): An API key, or
+            api_config: An API key string, or
             a dictionary containing an API configuration.
             The minimum set of keys is:
                 "endpoint": A fully qualified endpoint URL for the bucket service.
@@ -23,13 +27,9 @@ class BucketService:
         """
         if isinstance(api_config, str):
             api_config = {"api_key": api_config}
-        self.api_config = api_config
 
-        self.service_endpoint = BLYSS_BUCKET_URL
-        if "endpoint" in api_config:
-            self.service_endpoint = api_config["endpoint"]
-
-        self.api = api.API(self.api_config["api_key"], self.service_endpoint)
+        service_endpoint = api_config.get("endpoint", BLYSS_BUCKET_URL)
+        self._api = api.API(api_config["api_key"], service_endpoint)
 
     def connect(
         self,
@@ -39,62 +39,63 @@ class BucketService:
         """Connect to an existing Blyss bucket.
 
         Args:
-            bucket_name (str): The name of the bucket to connect to.
-            secret_seed (Optional[str], optional): An optional secret seed to
-            initialize the client using. The secret seed is used to encrypt
-            client queries. If not supplied, a random one is generated with `os.urandom`.
+            bucket_name: The name of the bucket to connect to.
+            secret_seed: An optional secret seed to derive the client secret,
+                         which will be used to encrypt all client queries.
+                         If not supplied, a random one is generated with `os.urandom`.
 
         Returns:
-            bucket.Bucket: An object representing a client to the Blyss bucket.
+            An object representing a client to the Blyss bucket.
         """
         if secret_seed is None:
             secret_seed = seed.get_random_seed()
-        b = bucket.Bucket(self.api, bucket_name, secret_seed=secret_seed)
+        b = bucket.Bucket(self._api, bucket_name, secret_seed=secret_seed)
         return b
 
     def connect_async(
         self, bucket_name: str, secret_seed: Optional[str] = None
     ) -> bucket.AsyncBucket:
-        """Connect to an existing Blyss bucket, using an asyncio-ready interface.
-
-        Args:
-            see connect()
-
-        Returns:
-            bucket.Bucket: An object representing a client to the Blyss bucket.
-        """
-        return bucket.AsyncBucket(self.api, bucket_name, secret_seed=secret_seed)
+        """Returns an asynchronous client to the Blyss bucket. Identical functionality to `connect`."""
+        return bucket.AsyncBucket(self._api, bucket_name, secret_seed=secret_seed)
 
     def create(
         self,
         bucket_name: str,
         open_access: bool = False,
-        usage_hints: dict[Any, Any] = {},
+        usage_hints: dict[str, Any] = {},
     ):
         """Create a new Blyss bucket.
 
         Args:
-            bucket_name (str): The bucket name. See sanitize_bucket_name for naming rules.
-            open_access (bool): If True, bucket will support open read-only access.
-            usage_hints (dict): A dictionary of hints describing the intended usage of this bucket.
-                                The Blyss service will optimize the encryption scheme accordingly.
+            bucket_name: Name of the new bucket. See [bucket naming rules](https://docs.blyss.dev/docs/buckets#names).
+            open_access: If True, bucket will support open read-only access, i.e. any user can perform reads. See [open access permissions](https://docs.blyss.dev/docs/buckets#permissions).
+            usage_hints: A dictionary of hints describing the intended usage of this bucket. Supported keys:
+                            - "maxItemSize": The maximum size of any item in the bucket, in bytes.
+                            A scheme will be chosen that can support at least this size, and possibly more.
+                            Larger item sizes carry performance costs; expect longer query times and more bandwidth usage.
+                            - "keyStoragePolicy": The key storage policy to use for this bucket. Options:
+                                - "none" (default): Stores no key-related information. This is the most performant option and will maximize write speed.
+                                - "bloom": Enables `Bucket.private_intersect()`. Uses a bloom filter to store probablistic information of key membership, with minimal impact on write speed.
+                                - "full": Store all keys in full. Enables `Bucket.list_keys()`. Will result in significantly slower writes.
+
         """
-        parameters = {**DEFAULT_BUCKET_PARAMETERS, **usage_hints}
+        parameters = {**DEFAULT_BUCKET_PARAMETERS}
+        parameters.update(usage_hints)
         bucket_create_req = {
             "name": bucket_name,
             "parameters": json.dumps(parameters),
             "open_access": open_access,
         }
-        self.api.create(json.dumps(bucket_create_req))
+        self._api.create(json.dumps(bucket_create_req))
 
     def exists(self, name: str) -> bool:
-        """Checks if a bucket exists.
+        """Check if a bucket exists.
 
         Args:
-            bucket_name (str): The bucket name.
+            name: Bucket name to look up.
 
         Returns:
-            bool: Whether a bucket with the given name already exists.
+            True if a bucket with the given name currently exists.
         """
         try:
             self.connect(name)
@@ -113,7 +114,7 @@ class BucketService:
             A dictionary of bucket metadata, keyed by bucket name.
         """
         buckets = {}
-        for b in self.api.list_buckets()["buckets"]:
+        for b in self._api.list_buckets()["buckets"]:
             n = b.pop("name")
             buckets[n] = b
         return buckets

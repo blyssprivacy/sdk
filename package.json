@@ -1,7 +1,7 @@
 {
   "author": "Samir Menon <samir@blyss.dev>",
   "name": "@blyss/sdk",
-  "version": "0.1.9",
+  "version": "0.2.0",
   "description": "Blyss SDK, enabling private retrievals from Blyss buckets",
   "type": "module",
   "main": "./dist/index.js",
