@@ -58,14 +58,17 @@ jobs:
           name: wheels
           path: python/dist
 
+      # only run docs on target x86_64
       - name: Build Python docs
+        if: matrix.target == 'x86_64'
         working-directory: python
         shell: bash
         run: |
           pip install pdoc
-          pdoc -o pdoc -d google -n ./blyss --no-search
+          pdoc -o pdoc -d google -n blyss --no-search
 
       - name: Upload Python docs
+        if: matrix.target == 'x86_64'
         uses: actions/upload-pages-artifact@v2
         with:
           path: python/pdoc
