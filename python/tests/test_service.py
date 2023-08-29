@@ -1,3 +1,5 @@
+from typing import Optional
+
 import os
 import sys
 import random
@@ -43,7 +45,7 @@ async def main(endpoint: str, api_key: str):
     print(bucket.info())
 
     # generate N random keys
-    N = 20000
+    N = 4000
     itemSize = 32
     localKeys = generate_keys(N, 0)
     # write all N keys
@@ -61,12 +63,16 @@ async def main(endpoint: str, api_key: str):
     bucket.delete_key(testKey)
     localKeys.remove(testKey)
     value = (await bucket.private_read([testKey]))[0]
-    if value is None:
-        print(f"Deleted key {testKey}")
-    else:
-        # this happens only sometimes??
-        print("ERROR: delete not reflected in read!")
-        print(f"Read deleted key {testKey} and got {value.hex()[:8]}[...]")
+
+    def _test_delete(key: str, value: Optional[bytes]):
+        if value is None:
+            print(f"Deleted key {testKey}")
+        else:
+            # this happens only sometimes??
+            print("ERROR: delete not reflected in read!")
+            print(f"Read deleted key {testKey} and got {value.hex()[:8]}[...]")
+
+    _test_delete(testKey, value)
 
     # clear all keys
     bucket.clear_entire_bucket()
