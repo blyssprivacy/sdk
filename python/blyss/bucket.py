@@ -62,8 +62,8 @@ class Bucket:
         self._public_uuid: Optional[str] = None
         self._exfil: Any = None  # used for benchmarking
 
-    def _check(self, uuid: str) -> bool:
-        """Checks if the server has the given UUID.
+    def _check(self) -> bool:
+        """Checks if the server has this client's public params.
 
         Args:
             uuid (str): The key to check.
@@ -71,18 +71,10 @@ class Bucket:
         Returns:
             bool: Whether the server has the given UUID.
         """
+        if self._public_uuid is None:
+            raise RuntimeError("Bucket not initialized. Call setup() first.")
         try:
-            self._api.check(uuid)
-            return True
-        except api.ApiException as e:
-            if e.code == 404:
-                return False
-            else:
-                raise e
-
-    async def _async_check(self, uuid: str) -> bool:
-        try:
-            await self._api.async_check(uuid)
+            self._api.check(self._public_uuid)
             return True
         except api.ApiException as e:
             if e.code == 404:
@@ -185,7 +177,7 @@ class Bucket:
         Returns:
             a list of values (bytes) corresponding to keys. None for keys not found.
         """
-        if not self._public_uuid or not self._check(self._public_uuid):
+        if not self._public_uuid or not self._check():
             self.setup()
             assert self._public_uuid
 
@@ -210,8 +202,8 @@ class Bucket:
 
         """
         public_params = self._lib.generate_keys_with_public_params()
-        setup_resp = self._api.setup(self.name, bytes(public_params))
-        self._public_uuid = setup_resp["uuid"]
+        self._public_uuid = self._api.setup(self.name, bytes(public_params))
+        assert self._check()
 
     def info(self) -> dict[Any, Any]:
         """Fetch this bucket's properties from the service, such as access permissions and PIR scheme parameters."""
@@ -317,6 +309,23 @@ class AsyncBucket(Bucket):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
+    async def _check(self) -> bool:
+        if self._public_uuid is None:
+            raise RuntimeError("Bucket not initialized. Call setup() first.")
+        try:
+            await self._api.async_check(self._public_uuid)
+            return True
+        except api.ApiException as e:
+            if e.code == 404:
+                return False
+            else:
+                raise e
+
+    async def setup(self):
+        public_params = self._lib.generate_keys_with_public_params()
+        self._public_uuid = await self._api.async_setup(self.name, bytes(public_params))
+        assert await self._check()
+
     async def write(self, kv_pairs: dict[str, bytes], CONCURRENCY=4):
         """
         Functionally equivalent to Bucket.write.
@@ -343,8 +352,8 @@ class AsyncBucket(Bucket):
         await asyncio.gather(*_tasks)
 
     async def private_read(self, keys: list[str]) -> list[Optional[bytes]]:
-        if not self._public_uuid or not await self._async_check(self._public_uuid):
-            self.setup()
+        if not self._public_uuid or not await self._check():
+            await self.setup()
             assert self._public_uuid
 
         multi_query = self._generate_query_stream(keys)

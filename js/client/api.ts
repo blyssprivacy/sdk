@@ -104,6 +104,48 @@ async function postData(
   }
 }
 
+async function postDataJson(
+  apiKey: string | null,
+  url: string,
+  data: Uint8Array | string,
+): Promise<any> {
+  const headers = new Headers(
+    {
+      'Content-Type': 'application/json',
+      'Accept-Encoding': 'gzip'
+    }
+  );
+  if (apiKey) headers.append('X-API-Key', apiKey);
+
+  // base64 encode bytes-like data
+  if (typeof data !== 'string' && !(data instanceof String)) {
+    data = btoa(String.fromCharCode.apply(null, data));
+  }
+
+  // compress
+  data = gzip(data);
+  headers.append('Content-Encoding', 'gzip');
+
+
+  const response = await fetch(url, {
+    method: 'POST',
+    body: data,
+    headers
+  });
+
+  if (response.status < 200 || response.status > 299) {
+    throw new ApiError(
+      response.status,
+      url,
+      await response.text(),
+      response.statusText
+    );
+  }
+
+  return response.json();
+}
+
+
 async function postFormData(
   url: string,
   fields: any,
@@ -271,7 +313,7 @@ class Api {
    * @param data The setup data.
    * @returns The setup data upload response, containing a UUID.
    */
-  async setup(bucketName: string, data: Uint8Array): Promise<any> {
+  async setupS3(bucketName: string, data: Uint8Array): Promise<any> {
     if (this.bucketEndpoint) {
       return await postData(
         this.apiKey,
@@ -292,6 +334,10 @@ class Api {
     await postFormData(prelim_result['url'], prelim_result['fields'], data);
 
     return prelim_result;
+  }
+
+  async setup(bucketName: string, data: Uint8Array): Promise<any> {
+    return await postDataJson(this.apiKey, this.urlFor(bucketName, SETUP_PATH), data);
   }
 
   /**

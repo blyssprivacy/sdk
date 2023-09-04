@@ -30,6 +30,8 @@ SETUP_PATH = "/setup"
 WRITE_PATH = "/write"
 READ_PATH = "/private-read"
 
+APIGW_MAX_SIZE = 6e6 / (4 / 3) * 0.95  # 6MB, base64 encoded, plus 5% margin
+
 
 class ApiException(Exception):
     """Exception raised when an API call to the Blyss service fails."""
@@ -115,8 +117,40 @@ def _post_data(api_key: str, url: str, data: Union[bytes, str]) -> bytes:
 
 
 def _post_data_json(api_key: str, url: str, data: Union[bytes, str]) -> dict[Any, Any]:
-    """Perform an HTTP POST request, returning a JSON-parsed dict"""
-    return json.loads(_post_data(api_key, url, data))
+    """Perform an HTTP POST request, returning a JSON-parsed dict.
+    Request data can be any JSON string, or a raw bytestring that will be base64-encoded before send.
+    All requests and responses are compressed JSON."""
+
+    if len(data) > APIGW_MAX_SIZE:
+        raise ValueError(
+            f"Scheme public parameters too large ({len(data)} bytes); maximum size is {APIGW_MAX_SIZE} bytes"
+        )
+
+    c = httpx.Client(
+        headers={
+            "x-api-key": api_key,
+            "Content-Type": "application/json",
+        }
+    )
+
+    data_textsafe: bytes
+    if type(data) == bytes:
+        data_textsafe = base64.b64encode(data)
+    elif type(data) == str:
+        data_textsafe = data.encode("utf-8")
+    else:
+        raise ValueError(f"Unsupported data type {type(data)}")
+
+    extra_headers = {}
+    if len(data_textsafe) > 1000:
+        payload = gzip.compress(data_textsafe)
+        extra_headers["Content-Encoding"] = "gzip"
+    else:
+        payload = data_textsafe
+
+    resp = c.post(url, content=payload, headers=extra_headers)
+
+    return resp.json()
 
 
 def _post_form_data(url: str, fields: dict[Any, Any], data: bytes):
@@ -134,15 +168,13 @@ async def _async_post_data(
     decode_json: bool = True,
 ) -> Any:
     """Perform an async HTTP POST request, returning a JSON-parsed dict response"""
-    headers = {
-        "x-api-key": api_key,
-    }
+    headers = {"x-api-key": api_key, "Content-Type": "application/json"}
     if type(data) == str:
-        headers["Content-Type"] = "application/json"
         data = data.encode("utf-8")
+    elif type(data) == bytes:
+        data = base64.b64encode(data)
     else:
-        headers["Content-Type"] = "application/octet-stream"
-    assert type(data) == bytes
+        raise ValueError(f"Unsupported data type {type(data)}")
 
     if compress:
         # apply gzip compression to data before sending
@@ -255,21 +287,31 @@ class API:
 
         return bloom_filter
 
-    def setup(self, bucket_name: str, data: bytes) -> dict[Any, Any]:
+    def setup(self, bucket_name: str, data: bytes) -> str:
         """Upload new setup data.
 
         Args:
             data (bytes): Setup data to upload.
         """
-        prelim_result = _post_data_json(
+        if len(data) > APIGW_MAX_SIZE:
+            raise ValueError(
+                f"Scheme public parameters too large ({len(data)} bytes); maximum size is {APIGW_MAX_SIZE} bytes"
+            )
+
+        r = _post_data_json(self.api_key, self._url_for(bucket_name, SETUP_PATH), data)
+
+        return r["uuid"]
+
+    async def async_setup(self, bucket_name: str, data: bytes) -> str:
+        resp = await _async_post_data(
             self.api_key,
             self._url_for(bucket_name, SETUP_PATH),
-            json.dumps({"length": len(data)}),
+            data,
+            compress=True,
+            decode_json=True,
         )
 
-        _post_form_data(prelim_result["url"], prelim_result["fields"], data)
-
-        return prelim_result
+        return resp["uuid"]
 
     def list_keys(self, bucket_name: str) -> list[str]:
         """List all keys in this bucket."""

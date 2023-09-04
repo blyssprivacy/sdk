@@ -90,11 +90,6 @@ async def main(endpoint: str, api_key: str):
     assert value is not None
     verify_read(testKey, value)
 
-    # test if clear took AFTER the new write
-    value = (await bucket.private_read([testKey]))[0]
-    if value is not None:
-        print(f"ERROR: {testKey} was not deleted or cleared!")
-
     # rename the bucket
     newBucketName = bucketName + "-rn"
     bucket.rename(newBucketName)
