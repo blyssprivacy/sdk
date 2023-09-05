@@ -1,6 +1,5 @@
 from typing import Any, Optional, Union
 from . import bucket, api, seed
-import json
 
 BLYSS_BUCKET_URL = "https://beta.api.blyss.dev"
 DEFAULT_BUCKET_PARAMETERS = {
@@ -83,10 +82,10 @@ class BucketService:
         parameters.update(usage_hints)
         bucket_create_req = {
             "name": bucket_name,
-            "parameters": json.dumps(parameters),
+            "parameters": parameters,
             "open_access": open_access,
         }
-        self._api.create(json.dumps(bucket_create_req))
+        r = self._api.create(bucket_create_req)
 
     def exists(self, name: str) -> bool:
         """Check if a bucket exists.

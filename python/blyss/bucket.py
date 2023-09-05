@@ -5,11 +5,10 @@ Abstracts functionality on an existing bucket.
 
 from typing import Optional, Any, Union, Iterator
 
-from . import api, serializer, seed
+from . import api, seed
 from .blyss_lib import BlyssLib
 
 import json
-import base64
 import bz2
 import time
 import asyncio
@@ -82,9 +81,7 @@ class Bucket:
             else:
                 raise e
 
-    def _split_into_chunks(
-        self, kv_pairs: dict[str, bytes]
-    ) -> list[list[dict[str, str]]]:
+    def _split_into_chunks(self, kv_pairs: dict[str, bytes]) -> list[dict[str, bytes]]:
         _MAX_PAYLOAD = 5 * 2**20  # 5 MiB
 
         # 1. Bin keys by row index
@@ -99,25 +96,19 @@ class Bucket:
         # 2. Prepare chunks of items, where each is a JSON-ready structure.
         # Each chunk is less than the maximum payload size, and guarantees
         # zero overlap of rows across chunks.
-        kv_chunks: list[list[dict[str, str]]] = []
-        current_chunk: list[dict[str, str]] = []
+        kv_chunks: list[dict[str, bytes]] = []
+        current_chunk: dict[str, bytes] = {}
         current_chunk_size = 0
         sorted_indices = sorted(keys_by_index.keys())
         for i in sorted_indices:
             keys = keys_by_index[i]
             # prepare all keys in this row
-            row = []
+            row = {}
             row_size = 0
             for key in keys:
-                value = kv_pairs[key]
-                value_str = base64.b64encode(value).decode("utf-8")
-                fmt = {
-                    "key": key,
-                    "value": value_str,
-                    "content-type": "application/octet-stream",
-                }
-                row.append(fmt)
-                row_size += int(24 + len(key) + len(value_str) + 48)
+                v = kv_pairs[key]
+                row[key] = v
+                row_size += int(16 + len(key) + len(v) * 4 / 3)
 
             # if the new row doesn't fit into the current chunk, start a new one
             if current_chunk_size + row_size > _MAX_PAYLOAD:
@@ -125,7 +116,7 @@ class Bucket:
                 current_chunk = row
                 current_chunk_size = row_size
             else:
-                current_chunk.extend(row)
+                current_chunk.update(row)
                 current_chunk_size += row_size
 
         # add the last chunk
@@ -134,13 +125,14 @@ class Bucket:
 
         return kv_chunks
 
-    def _generate_query_stream(self, keys: list[str]) -> bytes:
+    def _generate_query_stream(self, keys: list[str]) -> list[bytes]:
         assert self._public_uuid
         # generate encrypted queries
         queries: list[bytes] = [
             self._lib.generate_query(self._public_uuid, self._lib.get_row(k))
             for k in keys
         ]
+        return queries
         # interleave the queries with their lengths (uint64_t)
         query_lengths = [len(q).to_bytes(8, "little") for q in queries]
         lengths_and_queries = [x for lq in zip(query_lengths, queries) for x in lq]
@@ -149,6 +141,14 @@ class Bucket:
         # serialize the queries
         multi_query = b"".join(lengths_and_queries)
         return multi_query
+
+    def _decode_result(self, key: str, result_row: bytes) -> Optional[bytes]:
+        try:
+            decrypted_result = self._lib.decode_response(result_row)
+            decompressed_result = bz2.decompress(decrypted_result)
+            return self._lib.extract_result(key, decompressed_result)
+        except:
+            return None
 
     def _unpack_query_result(
         self, keys: list[str], raw_result: bytes, ignore_errors=False
@@ -162,9 +162,7 @@ class Bucket:
                 else:
                     raise RuntimeError(f"Failed to process query for key {key}.")
             else:
-                decrypted_result = self._lib.decode_response(result)
-                decompressed_result = bz2.decompress(decrypted_result)
-                extracted_result = self._lib.extract_result(key, decompressed_result)
+                extracted_result = self._decode_result(key, result)
             retrievals.append(extracted_result)
         return retrievals
 
@@ -181,15 +179,18 @@ class Bucket:
             self.setup()
             assert self._public_uuid
 
-        multi_query = self._generate_query_stream(keys)
+        queries = self._generate_query_stream(keys)
 
         start = time.perf_counter()
-        multi_result = self._api.private_read(self.name, multi_query)
+        rows_per_result = self._api.private_read(self.name, queries)
         self._exfil = time.perf_counter() - start
 
-        retrievals = self._unpack_query_result(keys, multi_result)
+        results = [
+            self._decode_result(key, result) if result else None
+            for key, result in zip(keys, rows_per_result)
+        ]
 
-        return retrievals
+        return results
 
     def setup(self):
         """Prepares this bucket client for private reads.
@@ -218,7 +219,8 @@ class Bucket:
         bucket_create_req = {
             "name": new_name,
         }
-        self._api.modify(self.name, json.dumps(bucket_create_req))
+        r = self._api.modify(self.name, bucket_create_req)
+        print(r)
         self.name = new_name
 
     def write(self, kv_pairs: dict[str, bytes]):
@@ -228,19 +230,20 @@ class Bucket:
             kv_pairs: A dictionary of key-value pairs to write into the bucket.
                       Keys must be UTF8 strings, and values may be arbitrary bytes.
         """
-        concatenated_kv_items = b""
-        for key, value in kv_pairs.items():
-            concatenated_kv_items += serializer.wrap_key_val(key.encode("utf-8"), value)
-        # single call to API endpoint
-        self._api.write(self.name, concatenated_kv_items)
+        self._api.write(self.name, kv_pairs)  # type: ignore
+        # bytes is a valid subset of Optional[bytes], despite mypy's complaints
 
-    def delete_key(self, key: str):
-        """Deletes a single key-value pair from the bucket.
+    def delete_key(self, keys: str | list[str]):
+        """Deletes key-value pairs from the bucket.
 
         Args:
             key: The key to delete.
         """
-        self._api.delete_key(self.name, key)
+        if isinstance(keys, str):
+            keys = [keys]
+
+        delete_payload = {k: None for k in keys}
+        self._api.write(self.name, delete_payload)  # type: ignore
 
     def destroy_entire_bucket(self):
         """Destroys the entire bucket. This action is permanent and irreversible."""
@@ -278,7 +281,7 @@ class Bucket:
             keys = [keys]
             single_query = True
 
-        results = [r if r is not None else None for r in self._private_read(keys)]
+        results = self._private_read(keys)
         if single_query:
             return results[0]
 
@@ -344,9 +347,10 @@ class AsyncBucket(Bucket):
         # Make one write call per chunk, while respecting a max concurrency limit.
         sem = asyncio.Semaphore(CONCURRENCY)
 
-        async def _paced_writer(chunk):
+        async def _paced_writer(chunk: dict[str, bytes]):
             async with sem:
-                await self._api.async_write(self.name, json.dumps(chunk))
+                await self._api.async_write(self.name, chunk)  # type: ignore
+                # bytes is a valid subset of Optional[bytes], despite mypy's complaints
 
         _tasks = [asyncio.create_task(_paced_writer(c)) for c in kv_chunks]
         await asyncio.gather(*_tasks)
@@ -359,9 +363,12 @@ class AsyncBucket(Bucket):
         multi_query = self._generate_query_stream(keys)
 
         start = time.perf_counter()
-        multi_result = await self._api.async_private_read(self.name, multi_query)
+        rows_per_result = await self._api.async_private_read(self.name, multi_query)
         self._exfil = time.perf_counter() - start
 
-        retrievals = self._unpack_query_result(keys, multi_result)
+        results = [
+            self._decode_result(key, result) if result else None
+            for key, result in zip(keys, rows_per_result)
+        ]
 
-        return retrievals
+        return results

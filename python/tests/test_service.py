@@ -19,9 +19,14 @@ def key_to_gold_value(key: str, length: int = 512) -> bytes:
 
 
 def verify_read(key: str, value: bytes):
+    expected = key_to_gold_value(key, len(value))
     try:
-        assert value == key_to_gold_value(key, len(value))
+        assert value == expected
     except:
+        print(f"read mismatch for key {key}")
+        print(f"received {value.hex()[:16]}")
+        print(f"expected {expected.hex()[:16]}")
+
         print(traceback.format_exc())
         raise
 
@@ -119,6 +124,8 @@ if __name__ == "__main__":
     if len(sys.argv) > 2:
         print("Using api_key from command line")
         api_key = sys.argv[2]
+        if api_key == "none":
+            api_key = None
     print("DEBUG", api_key, endpoint)
     assert endpoint is not None
     assert api_key is not None
