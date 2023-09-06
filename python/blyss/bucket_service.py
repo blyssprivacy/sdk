@@ -51,11 +51,18 @@ class BucketService:
         b = bucket.Bucket(self._api, bucket_name, secret_seed=secret_seed)
         return b
 
-    def connect_async(
-        self, bucket_name: str, secret_seed: Optional[str] = None
-    ) -> bucket.AsyncBucket:
-        """Returns an asynchronous client to the Blyss bucket. Identical functionality to `connect`."""
-        return bucket.AsyncBucket(self._api, bucket_name, secret_seed=secret_seed)
+    @staticmethod
+    def _build_create_req(
+        bucket_name: str, open_access: bool, usage_hints: dict[str, Any]
+    ) -> dict[str, Any]:
+        parameters = {**DEFAULT_BUCKET_PARAMETERS}
+        parameters.update(usage_hints)
+        bucket_create_req = {
+            "name": bucket_name,
+            "parameters": parameters,
+            "open_access": open_access,
+        }
+        return bucket_create_req
 
     def create(
         self,
@@ -75,17 +82,12 @@ class BucketService:
                             - "keyStoragePolicy": The key storage policy to use for this bucket. Options:
                                 - "none" (default): Stores no key-related information. This is the most performant option and will maximize write speed.
                                 - "bloom": Enables `Bucket.private_intersect()`. Uses a bloom filter to store probablistic information of key membership, with minimal impact on write speed.
-                                - "full": Store all keys in full. Enables `Bucket.list_keys()`. Will result in significantly slower writes.
 
         """
-        parameters = {**DEFAULT_BUCKET_PARAMETERS}
-        parameters.update(usage_hints)
-        bucket_create_req = {
-            "name": bucket_name,
-            "parameters": parameters,
-            "open_access": open_access,
-        }
-        r = self._api.create(bucket_create_req)
+        bucket_create_req = self._build_create_req(
+            bucket_name, open_access, usage_hints
+        )
+        self._api._blocking_create(bucket_create_req)
 
     def exists(self, name: str) -> bool:
         """Check if a bucket exists.
@@ -96,15 +98,7 @@ class BucketService:
         Returns:
             True if a bucket with the given name currently exists.
         """
-        try:
-            self.connect(name)
-            return True
-        except api.ApiException as e:
-            if e.code in [403, 404]:  # Forbidden (need read permission to see metadata)
-                # or Not Found (bucket of this name doesn't exist)
-                return False
-            else:
-                raise e
+        return self._api._blocking_exists(name)
 
     def list_buckets(self) -> dict[str, Any]:
         """List all buckets accessible to this API key.
@@ -113,7 +107,40 @@ class BucketService:
             A dictionary of bucket metadata, keyed by bucket name.
         """
         buckets = {}
-        for b in self._api.list_buckets()["buckets"]:
+        for b in self._api._blocking_list_buckets()["buckets"]:
+            n = b.pop("name")
+            buckets[n] = b
+        return buckets
+
+
+class BucketServiceAsync(BucketService):
+    async def create(
+        self,
+        bucket_name: str,
+        open_access: bool = False,
+        usage_hints: dict[str, Any] = {},
+    ):
+        bucket_create_req = self._build_create_req(
+            bucket_name, open_access, usage_hints
+        )
+        await self._api.create(bucket_create_req)
+
+    async def connect(
+        self,
+        bucket_name: str,
+        secret_seed: Optional[str] = None,
+    ) -> bucket.AsyncBucket:
+        """Returns an asynchronous client to the Blyss bucket. Identical functionality to `BucketService.connect`."""
+        b = bucket.AsyncBucket(self._api, bucket_name, secret_seed=secret_seed)
+        await b.async_init()
+        return b
+
+    async def exists(self, name: str) -> bool:
+        return await self._api.exists(name)
+
+    async def list_buckets(self) -> dict[str, Any]:
+        buckets = {}
+        for b in (await self._api.list_buckets())["buckets"]:
             n = b.pop("name")
             buckets[n] = b
         return buckets
