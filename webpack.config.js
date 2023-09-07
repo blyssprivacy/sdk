@@ -12,7 +12,7 @@ const distCjs = path.resolve(dist, 'cjs');
 
 const config = {
   name: 'web',
-  mode: 'production',
+  mode: 'development',
   context: path.resolve(__dirname, 'js'),
   entry: {
     index: './index'
