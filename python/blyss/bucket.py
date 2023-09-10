@@ -121,13 +121,13 @@ class Bucket:
         ]
         return queries
 
-    def _decode_result(
-        self, key: str, result_row: bytes, silence_errors: bool = True
+    def _decode_result_row(
+        self, result_row: bytes, silence_errors: bool = True
     ) -> Optional[bytes]:
         try:
             decrypted_result = self._lib.decode_response(result_row)
             decompressed_result = bz2.decompress(decrypted_result)
-            return self._lib.extract_result(key, decompressed_result)
+            return decompressed_result
         except:
             if not silence_errors:
                 raise
@@ -198,42 +198,52 @@ class Bucket:
         self._api._blocking_clear(self.name)
 
     def private_read(self, keys: list[str]) -> list[Optional[bytes]]:
-        """Privately reads the supplied key(s) from the bucket,
-        and returns the corresponding value(s).
+        """Privately reads the supplied keys from the bucket,
+        and returns the corresponding values.
 
         Data will be accessed using fully homomorphic encryption, designed to
         make it impossible for any entity (including the Blyss service!) to
-        determine which key(s) are being read.
+        determine which keys are being read.
 
         Args:
-            keys: A key or list of keys to privately retrieve.
-                  If a list of keys is supplied,
-                  results will be returned in the same order.
+            keys: A list of keys to privately retrieve.
+                  Results will be returned in the same order.
 
         Returns:
             For each key, the value found for the key in the bucket,
             or None if the key was not found.
         """
-        single_query = False
-        if isinstance(keys, str):
-            keys = [keys]
-            single_query = True
-
-        if not self._public_uuid or not self._check():
-            self.setup()
-            assert self._public_uuid
-
-        queries = self._generate_query_stream(keys)
-        rows_per_result = self._api._blocking_private_read(self.name, queries)
+        row_indices_per_key = [self._lib.get_row(k) for k in keys]
+        rows_per_result = self.private_read_row(row_indices_per_key)
         results = [
-            self._decode_result(key, result) if result else None
-            for key, result in zip(keys, rows_per_result)
+            self._lib.extract_result(key, row) if row else None
+            for key, row in zip(keys, rows_per_result)
         ]
 
-        if single_query:
-            return results[0]
-
         return results
+
+    def private_read_row(self, row_indices: list[int]) -> list[Optional[bytes]]:
+        """Direct API for private reads; fetches full bucket rows rather than individual keys.
+
+        Args:
+            row_indices: A list of row indices to privately retrieve.
+                            Results will be returned in the same order.
+
+        Returns:
+            For each row index, the value found for the row in the bucket,
+            or None if the row was not found.
+        """
+        if not self._public_uuid or not self._check():
+            self.setup()
+        assert self._public_uuid
+
+        queries = [self._lib.generate_query(self._public_uuid, i) for i in row_indices]
+        raw_rows_per_result = self._api._blocking_private_read(self.name, queries)
+        rows_per_result = [
+            self._decode_result_row(rr) if rr else None for rr in raw_rows_per_result
+        ]
+
+        return rows_per_result
 
     def private_key_intersect(self, keys: list[str]) -> list[str]:
         """Privately intersects the given set of keys with the keys in this bucket,
@@ -332,17 +342,25 @@ class AsyncBucket(Bucket):
         await asyncio.gather(*_tasks)
 
     async def private_read(self, keys: list[str]) -> list[Optional[bytes]]:
-        if not self._public_uuid or not await self._check():
-            await self.setup()
-            assert self._public_uuid
-
-        multi_query = self._generate_query_stream(keys)
-
-        rows_per_result = await self._api.async_private_read(self.name, multi_query)
+        row_indices_per_key = [self._lib.get_row(k) for k in keys]
+        rows_per_result = await self.private_read_row(row_indices_per_key)
 
         results = [
-            self._decode_result(key, result) if result else None
-            for key, result in zip(keys, rows_per_result)
+            self._lib.extract_result(key, row) if row else None
+            for key, row in zip(keys, rows_per_result)
         ]
 
         return results
+
+    async def private_read_row(self, row_indices: list[int]) -> list[Optional[bytes]]:
+        if not self._public_uuid or not await self._check():
+            await self.setup()
+        assert self._public_uuid
+
+        queries = [self._lib.generate_query(self._public_uuid, i) for i in row_indices]
+        raw_rows_per_result = await self._api.private_read(self.name, queries)
+        rows_per_result = [
+            self._decode_result_row(rr) if rr else None for rr in raw_rows_per_result
+        ]
+
+        return rows_per_result

@@ -14,21 +14,15 @@ ApiConfig = dict[str, str]
 class BucketService:
     """A client to the hosted Blyss bucket service. Allows creation, deletion, and modification of buckets."""
 
-    def __init__(self, api_config: Union[str, ApiConfig]):
+    def __init__(self, api_key: str, endpoint: str = BLYSS_BUCKET_URL):
         """Initialize a client of the Blyss bucket service.
 
         Args:
-            api_config: An API key string, or
-            a dictionary containing an API configuration.
-            The minimum set of keys is:
-                "endpoint": A fully qualified endpoint URL for the bucket service.
-                "api_key" : An API key to supply with every request.
-        """
-        if isinstance(api_config, str):
-            api_config = {"api_key": api_config}
+            api_key: A valid Blyss API key.
+            endpoint: A fully qualified endpoint URL for the bucket service, e.g. https://beta.api.blyss.dev.
 
-        service_endpoint = api_config.get("endpoint", BLYSS_BUCKET_URL)
-        self._api = api.API(api_config["api_key"], service_endpoint)
+        """
+        self._api = api.API(api_key, endpoint)
 
     def connect(
         self,

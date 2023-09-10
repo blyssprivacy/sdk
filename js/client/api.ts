@@ -123,9 +123,9 @@ async function postDataJson(
     data = JSON.stringify(bytesToBase64(data));
   }
 
-  // compress
-  data = gzip(data);
-  headers.append('Content-Encoding', 'gzip');
+  // // compress
+  // data = gzip(data);
+  // headers.append('Content-Encoding', 'gzip');
 
 
   const response = await fetch(url, {

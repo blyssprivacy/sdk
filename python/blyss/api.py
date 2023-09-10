@@ -30,6 +30,7 @@ WRITE_PATH = "/write"
 READ_PATH = "/private-read"
 
 APIGW_MAX_SIZE = 6e6 / (4 / 3) * 0.95  # 6MB, base64 encoded, plus 5% margin
+_GLOBAL_ENABLE_REQUEST_COMPRESSION = False
 
 
 # Not compatible with nested asyncio loops.
@@ -103,7 +104,7 @@ async def _async_post_data(
                 f"Request data is too large ({len(data_json)} JSON bytes); maximum size is {APIGW_MAX_SIZE} bytes"
             )
 
-        if compress:
+        if compress and _GLOBAL_ENABLE_REQUEST_COMPRESSION:
             # apply gzip compression to data before sending
             payload = gzip.compress(data_json)
             headers["Content-Encoding"] = "gzip"
@@ -145,7 +146,9 @@ class API:
             data_json (str): A JSON-encoded string of the new bucket request.
         """
         return await _async_post_data(
-            self.api_key, self._service_url_for(CREATE_PATH), data_jsonable
+            self.api_key,
+            self._service_url_for(CREATE_PATH),
+            data_jsonable,
         )
 
     def _blocking_create(self, *args, **kwargs):
@@ -258,10 +261,7 @@ class API:
             data (bytes): Setup data to upload.
         """
         resp = await _async_post_data(
-            self.api_key,
-            self._url_for(bucket_name, SETUP_PATH),
-            data,
-            compress=True,
+            self.api_key, self._url_for(bucket_name, SETUP_PATH), data
         )
 
         return resp["uuid"]
@@ -299,7 +299,7 @@ class API:
     def _blocking_write(self, *args, **kwargs):
         async_runner(self.write, *args, **kwargs)
 
-    async def async_private_read(
+    async def private_read(
         self, bucket_name: str, queries: list[bytes]
     ) -> list[Optional[bytes]]:
         """Privately read data from this bucket."""
@@ -313,4 +313,4 @@ class API:
         return [base64.b64decode(v) if v is not None else None for v in r]
 
     def _blocking_private_read(self, *args, **kwargs):
-        return async_runner(self.async_private_read, *args, **kwargs)
+        return async_runner(self.private_read, *args, **kwargs)
