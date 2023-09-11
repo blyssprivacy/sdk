@@ -8,17 +8,20 @@ export default async function main(port: string) {
 
   console.log(bucket.metadata);
 
+  // buckets are bytes-in/bytes-out. SDK write() will automatically serialize as UTF-8.
   await bucket.write({
     Ohio: 'Columbus',
     California: 'Sacramento'
   });
 
-  let capital = await bucket.privateRead('Ohio');
+  // but reads are always bytes-out, and must be decoded.
+  let capital = new TextDecoder().decode(await bucket.privateRead('Ohio'));
   if (capital !== 'Columbus') {
     throw 'Incorrect result.';
   }
 
-  capital = await bucket.privateRead('California');
+  // capital = await bucket.privateRead('California');
+  capital = new TextDecoder().decode(await bucket.privateRead('California'));
   if (capital !== 'Sacramento') {
     throw 'Incorrect result.';
   }

@@ -2,6 +2,7 @@ import { KeyInfo } from '../bucket/bucket';
 import { BLYSS_HINT_URL_PREFIX } from '../bucket/bucket_service';
 import { gzip } from '../compression/pako';
 import { BloomFilter, bloomFilterFromBytes } from '../data/bloom';
+import { base64ToBytes, bytesToBase64 } from './seed';
 
 const CREATE_PATH = '/create';
 const MODIFY_PATH = '/modify';
@@ -46,7 +47,7 @@ async function getData(
     headers
   });
 
-  if (response.status < 200 || response.status > 299) {
+  if (!response.ok) {
     throw new ApiError(
       response.status,
       url,
@@ -87,7 +88,7 @@ async function postData(
     headers
   });
 
-  if (response.status < 200 || response.status > 299) {
+  if (!response.ok) {
     throw new ApiError(
       response.status,
       url,
@@ -103,6 +104,48 @@ async function postData(
     return new Uint8Array(data);
   }
 }
+
+async function postDataJson(
+  apiKey: string | null,
+  url: string,
+  data: Uint8Array | string,
+): Promise<any> {
+  const headers = new Headers(
+    {
+      'Content-Type': 'application/json',
+      'Accept-Encoding': 'gzip'
+    }
+  );
+  if (apiKey) headers.append('X-API-Key', apiKey);
+
+  // base64 encode bytes-like data
+  if (typeof data !== 'string' && !(data instanceof String)) {
+    data = JSON.stringify(bytesToBase64(data));
+  }
+
+  // // compress
+  // data = gzip(data);
+  // headers.append('Content-Encoding', 'gzip');
+
+
+  const response = await fetch(url, {
+    method: 'POST',
+    body: data,
+    headers
+  });
+
+  if (!response.ok) {
+    throw new ApiError(
+      response.status,
+      url,
+      await response.text(),
+      response.statusText
+    );
+  }
+
+  return response.json();
+}
+
 
 async function postFormData(
   url: string,
@@ -124,7 +167,7 @@ async function postFormData(
 
   const response = await fetch(req);
 
-  if (response.status < 200 || response.status > 299) {
+  if (!response.ok) {
     throw new ApiError(
       response.status,
       url,
@@ -251,27 +294,13 @@ class Api {
   }
 
   /**
-   * Lists all keys in a bucket.
-   *
-   * @param bucketName The name of the bucket.
-   * @returns A list of information on every key in the bucket.
-   */
-  async listKeys(bucketName: string): Promise<KeyInfo[]> {
-    return await getData(
-      this.apiKey,
-      this.urlFor(bucketName, LIST_KEYS_PATH),
-      true
-    );
-  }
-
-  /**
    * Upload new setup data.
    *
    * @param bucketName The name of the bucket associated with this setup data.
    * @param data The setup data.
    * @returns The setup data upload response, containing a UUID.
    */
-  async setup(bucketName: string, data: Uint8Array): Promise<any> {
+  async setupS3(bucketName: string, data: Uint8Array): Promise<any> {
     if (this.bucketEndpoint) {
       return await postData(
         this.apiKey,
@@ -292,6 +321,10 @@ class Api {
     await postFormData(prelim_result['url'], prelim_result['fields'], data);
 
     return prelim_result;
+  }
+
+  async setup(bucketName: string, data: Uint8Array): Promise<any> {
+    return await postDataJson(this.apiKey, this.urlFor(bucketName, SETUP_PATH), data);
   }
 
   /**
@@ -329,22 +362,30 @@ class Api {
   }
 
   /** Write to this bucket. */
-  async write(bucketName: string, data: Uint8Array) {
+  async write(bucketName: string, kvPairs: { [key: string]: Uint8Array | null }) {
+    // replace non-null values with base64-encoded strings, and leave null values as is
+    const json_data = JSON.stringify(
+      Object.fromEntries(
+        Object.entries(kvPairs).map(([k, v]) => [k, v ? bytesToBase64(v) : null])
+      )
+    );
+
     await postData(
       this.apiKey,
       this.urlFor(bucketName, WRITE_PATH),
-      data,
+      json_data,
       false
     );
   }
 
   /** Delete a key in this bucket. */
   async deleteKey(bucketName: string, key: string) {
-    await postData(
+    const kvDelete: { [key: string]: string | null } = { [key]: null };
+
+    await postDataJson(
       this.apiKey,
-      this.urlFor(bucketName, DELETE_PATH),
-      new TextEncoder().encode(key),
-      false
+      this.urlFor(bucketName, WRITE_PATH),
+      JSON.stringify(kvDelete),
     );
   }
 
@@ -357,6 +398,29 @@ class Api {
       false
     );
   }
+
+
+  /** 
+   * Privately read data from this bucket, returning bytes or null if the item was not found.
+   */
+  async privateReadJson(bucketName: string, queries: Uint8Array[]): Promise<(Uint8Array | null)[]> {
+
+    // base64 encode each query
+    const queryStrings = queries.map(q => btoa(String.fromCharCode.apply(null, q)));
+
+    // Send list of Base64-encoded queries to the server
+    const resultsB64: (string | null)[] = await postData(
+      this.apiKey,
+      this.urlFor(bucketName, READ_PATH),
+      JSON.stringify(queryStrings),
+      true
+    );
+
+    // Parse results from the server, which are each either a Base64-encoded string or null
+    const results: (Uint8Array | null)[] = resultsB64.map(r => r ? Uint8Array.from(atob(r), c => c.charCodeAt(0)) : null);
+    return results;
+  }
+
 
   /** Privately read data from this bucket. */
   async privateReadMultipart(

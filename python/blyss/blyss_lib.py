@@ -43,11 +43,12 @@ class BlyssLib:
             bytes: The generated public parameters, if requested.
         """
 
-        return blyss.generate_keys(  # type: ignore
+        r = blyss.generate_keys(
             self.inner_client,
             seed_from_string(self.secret_seed),
             True,
         )
+        return bytes(r)
 
     def get_row(self, key: str) -> int:
         """Gets the target row in the database for a given key.

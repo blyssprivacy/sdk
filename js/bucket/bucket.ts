@@ -152,34 +152,27 @@ export class Bucket {
     keys: string[]
   ): Promise<any[]> {
     if (!this.uuid || !this.check(this.uuid)) {
+      console.log('Setting up client');
       await this.setup();
     }
 
-    const queries: { key: string; queryData: Uint8Array }[] = [];
+    // For each key, generate a query, encode it as base64, and append it to a list.
+    let queries: Uint8Array[] = [];
     for (const key of keys) {
       const rowIdx = this.lib.getRow(key);
       const queryData = this.lib.generateQuery(this.uuid, rowIdx);
-      queries.push({ key, queryData });
+      queries.push(queryData);
     }
 
-    const endResults = [];
-    const batches = Math.ceil(queries.length / this.batchSize);
-    for (let i = 0; i < batches; i++) {
-      const queriesForBatch = queries.slice(
-        i * this.batchSize,
-        (i + 1) * this.batchSize
-      );
+    // Send the list of queries to the server.
+    const rawResults = await this.api.privateReadJson(this.name, queries);
 
-      const queryBatch = serializeChunks(queriesForBatch.map(x => x.queryData));
-      const rawResultChunks = await this.getRawResponse(queryBatch);
-      const rawResults = deserializeChunks(rawResultChunks);
 
-      const batchEndResults = await Promise.all(
-        rawResults.map((r, i) => this.getEndResult(queriesForBatch[i].key, r))
-      );
-
-      endResults.push(...batchEndResults);
-    }
+    // For each query, decrypt the result, decompress it, and extract the
+    // result.
+    const endResults = await Promise.all(
+      rawResults.map((r, i) => this.getEndResult(keys[i], r))
+    );
 
     return endResults;
   }
@@ -328,12 +321,6 @@ export class Bucket {
     this.name = newBucketName;
   }
 
-  /** Gets info on all keys in this bucket. */
-  async listKeys(): Promise<KeyInfo[]> {
-    this.ensureSpiral();
-    return await this.api.listKeys(this.name);
-  }
-
   /**
    * Make a write to this bucket.
    *
@@ -343,27 +330,20 @@ export class Bucket {
    *   1024 UTF-8 bytes.
    */
   async write(
-    keyValuePairs: { [key: string]: any }
+    keyValuePairs: { [key: string]: Uint8Array | string | null }
   ) {
     this.ensureSpiral();
-
-    const data = [];
+    // convert any string KV pairs to Uint8Array
+    const kvPairs: { [key: string]: Uint8Array | null } = {};
     for (const key in keyValuePairs) {
-      if (Object.prototype.hasOwnProperty.call(keyValuePairs, key)) {
-        const value = keyValuePairs[key];
-        const valueBytes = serialize(value);
-        const keyBytes = new TextEncoder().encode(key);
-        const serializedKeyValue = wrapKeyValue(keyBytes, valueBytes);
-        data.push(serializedKeyValue);
-        // const kv = {
-        //   key: key,
-        //   value: Buffer.from(valueBytes).toString('base64')
-        // }
+      const value = keyValuePairs[key];
+      if (!(value instanceof Uint8Array)) {
+        kvPairs[key] = new TextEncoder().encode(value);
+      } else {
+        kvPairs[key] = value;
       }
     }
-    const concatenatedData = concatBytes(data);
-    // const concatenatedData = serialize(data);
-    await this.api.write(this.name, concatenatedData);
+    await this.api.write(this.name, kvPairs);
   }
 
   /**

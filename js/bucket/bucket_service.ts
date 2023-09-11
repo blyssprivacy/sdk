@@ -97,7 +97,7 @@ export class BucketService {
     const parameters = { ...DEFAULT_BUCKET_PARAMETERS, ...params };
     const bucketCreateReq = {
       name: bucketName,
-      parameters: JSON.stringify(parameters),
+      parameters,
       open_access: openAccess
     };
     await this.api.create(JSON.stringify(bucketCreateReq));

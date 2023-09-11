@@ -30,15 +30,29 @@ function generateKeys(n: number, seed: number = 0): string[] {
     );
 }
 
+
+async function generateKVPairs(n: number, seed: number, itemSize: number): Promise<{ [key: string]: Uint8Array }> {
+    const keys = generateKeys(n, seed);
+    const kvPairs: { [key: string]: Uint8Array } = {};
+
+    for (const key of keys) {
+        kvPairs[key] = await keyToValue(key, itemSize);
+    }
+
+    return kvPairs;
+}
+
+
+function getRandomKey(kvP: { [key: string]: Uint8Array }): string {
+    return Object.keys(kvP)[Math.floor(Math.random() * Object.keys(kvP).length)];
+}
+
+
 function generateBucketName(): string {
     return 'api-tester-' + Math.random().toString(16).substring(2, 10);
 }
 
-async function testBlyssService(endpoint: string = 'https://dev2.api.blyss.dev') {
-    const apiKey = process.env.BLYSS_API_KEY;
-    if (!apiKey) {
-        throw new Error('BLYSS_API_KEY environment variable is not set');
-    }
+async function testBlyssService(endpoint: string, apiKey: string) {
     console.log('Using key: ' + apiKey + ' to connect to ' + endpoint);
     const client: Client = await new blyss.Client(
         {
@@ -55,50 +69,44 @@ async function testBlyssService(endpoint: string = 'https://dev2.api.blyss.dev')
     // generate N random keys
     const N = 100;
     const itemSize = 32;
-    let localKeys = generateKeys(N);
-    function getRandomKey(): string {
-        return localKeys[Math.floor(Math.random() * localKeys.length)];
-    }
+    let kvPairs = await generateKVPairs(N, 0, itemSize);
+
     // write all N keys
     await bucket.write(
-        await Promise.all(localKeys.map(
-            async (k) => ({
-                k: await keyToValue(k, itemSize)
-            })
-        ))
+        kvPairs
     );
     console.log(`Wrote ${N} keys`);
 
     // read a random key
-    let testKey = getRandomKey();
+    let testKey = getRandomKey(kvPairs);
+    console.log(`Reading key ${testKey}`)
+    await bucket.setup();
+    console.log("1111");
     let value = await bucket.privateRead(testKey);
     await verifyRead(testKey, value);
     console.log(`Read key ${testKey}`);
 
     // delete testKey from the bucket, and localData.
     await bucket.deleteKey(testKey);
-    localKeys.splice(localKeys.indexOf(testKey), 1);
+
     console.log(`Deleted key ${testKey}`);
 
     // write a new value
     testKey = 'newKey0';
-    await bucket.write({ testKey: keyToValue(testKey, itemSize) });
-    localKeys.push(testKey);
+    let newValue = await keyToValue(testKey, itemSize);
+    await bucket.write({ testKey: newValue });
+    kvPairs[testKey] = newValue;
     console.log(`Wrote key ${testKey}`);
 
     // clear all keys
     await bucket.clearEntireBucket();
-    localKeys = [];
+    kvPairs = {};
     console.log('Cleared bucket');
 
     // write a new set of N keys
-    localKeys = generateKeys(N, 1);
+    kvPairs = await generateKVPairs(N, 1, itemSize);
     await bucket.write(
-        await Promise.all(localKeys.map(
-            async (k) => ({
-                k: await keyToValue(k, itemSize)
-            })
-        ))
+        kvPairs
     );
     console.log(`Wrote ${N} keys`);
 
@@ -109,7 +117,7 @@ async function testBlyssService(endpoint: string = 'https://dev2.api.blyss.dev')
     console.log(await bucket.info());
 
     // random read
-    testKey = getRandomKey();
+    testKey = getRandomKey(kvPairs);
     value = await bucket.privateRead(testKey);
     await verifyRead(testKey, value);
     console.log(`Read key ${testKey}`);
@@ -119,11 +127,15 @@ async function testBlyssService(endpoint: string = 'https://dev2.api.blyss.dev')
     console.log(`Destroyed bucket ${bucket.name}`);
 }
 
-async function main() {
-    const endpoint = "https://dev2.api.blyss.dev"
-    console.log('Testing Blyss service at URL ' + endpoint);
-    await testBlyssService(endpoint);
+async function main(endpoint: string, apiKey: string) {
+    if (!apiKey) {
+        throw new Error('BLYSS_API_KEY environment variable is not set');
+    }
+    await testBlyssService(endpoint, apiKey);
     console.log('All tests completed successfully.');
 }
 
-main();
+// get endpoint and api key from command line, or fallback to defaults
+const endpoint = process.argv[2] || 'https://beta.api.blyss.dev';
+const apiKey = process.argv[3] || process.env.BLYSS_API_KEY;
+main(endpoint, apiKey);

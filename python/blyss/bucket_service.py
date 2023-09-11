@@ -1,6 +1,5 @@
 from typing import Any, Optional, Union
 from . import bucket, api, seed
-import json
 
 BLYSS_BUCKET_URL = "https://beta.api.blyss.dev"
 DEFAULT_BUCKET_PARAMETERS = {
@@ -15,21 +14,15 @@ ApiConfig = dict[str, str]
 class BucketService:
     """A client to the hosted Blyss bucket service. Allows creation, deletion, and modification of buckets."""
 
-    def __init__(self, api_config: Union[str, ApiConfig]):
+    def __init__(self, api_key: str, endpoint: str = BLYSS_BUCKET_URL):
         """Initialize a client of the Blyss bucket service.
 
         Args:
-            api_config: An API key string, or
-            a dictionary containing an API configuration.
-            The minimum set of keys is:
-                "endpoint": A fully qualified endpoint URL for the bucket service.
-                "api_key" : An API key to supply with every request.
-        """
-        if isinstance(api_config, str):
-            api_config = {"api_key": api_config}
+            api_key: A valid Blyss API key.
+            endpoint: A fully qualified endpoint URL for the bucket service, e.g. https://beta.api.blyss.dev.
 
-        service_endpoint = api_config.get("endpoint", BLYSS_BUCKET_URL)
-        self._api = api.API(api_config["api_key"], service_endpoint)
+        """
+        self._api = api.API(api_key, endpoint)
 
     def connect(
         self,
@@ -52,11 +45,18 @@ class BucketService:
         b = bucket.Bucket(self._api, bucket_name, secret_seed=secret_seed)
         return b
 
-    def connect_async(
-        self, bucket_name: str, secret_seed: Optional[str] = None
-    ) -> bucket.AsyncBucket:
-        """Returns an asynchronous client to the Blyss bucket. Identical functionality to `connect`."""
-        return bucket.AsyncBucket(self._api, bucket_name, secret_seed=secret_seed)
+    @staticmethod
+    def _build_create_req(
+        bucket_name: str, open_access: bool, usage_hints: dict[str, Any]
+    ) -> dict[str, Any]:
+        parameters = {**DEFAULT_BUCKET_PARAMETERS}
+        parameters.update(usage_hints)
+        bucket_create_req = {
+            "name": bucket_name,
+            "parameters": parameters,
+            "open_access": open_access,
+        }
+        return bucket_create_req
 
     def create(
         self,
@@ -76,17 +76,12 @@ class BucketService:
                             - "keyStoragePolicy": The key storage policy to use for this bucket. Options:
                                 - "none" (default): Stores no key-related information. This is the most performant option and will maximize write speed.
                                 - "bloom": Enables `Bucket.private_intersect()`. Uses a bloom filter to store probablistic information of key membership, with minimal impact on write speed.
-                                - "full": Store all keys in full. Enables `Bucket.list_keys()`. Will result in significantly slower writes.
 
         """
-        parameters = {**DEFAULT_BUCKET_PARAMETERS}
-        parameters.update(usage_hints)
-        bucket_create_req = {
-            "name": bucket_name,
-            "parameters": json.dumps(parameters),
-            "open_access": open_access,
-        }
-        self._api.create(json.dumps(bucket_create_req))
+        bucket_create_req = self._build_create_req(
+            bucket_name, open_access, usage_hints
+        )
+        self._api._blocking_create(bucket_create_req)
 
     def exists(self, name: str) -> bool:
         """Check if a bucket exists.
@@ -97,15 +92,7 @@ class BucketService:
         Returns:
             True if a bucket with the given name currently exists.
         """
-        try:
-            self.connect(name)
-            return True
-        except api.ApiException as e:
-            if e.code in [403, 404]:  # Forbidden (need read permission to see metadata)
-                # or Not Found (bucket of this name doesn't exist)
-                return False
-            else:
-                raise e
+        return self._api._blocking_exists(name)
 
     def list_buckets(self) -> dict[str, Any]:
         """List all buckets accessible to this API key.
@@ -114,7 +101,40 @@ class BucketService:
             A dictionary of bucket metadata, keyed by bucket name.
         """
         buckets = {}
-        for b in self._api.list_buckets()["buckets"]:
+        for b in self._api._blocking_list_buckets()["buckets"]:
+            n = b.pop("name")
+            buckets[n] = b
+        return buckets
+
+
+class BucketServiceAsync(BucketService):
+    async def create(
+        self,
+        bucket_name: str,
+        open_access: bool = False,
+        usage_hints: dict[str, Any] = {},
+    ):
+        bucket_create_req = self._build_create_req(
+            bucket_name, open_access, usage_hints
+        )
+        await self._api.create(bucket_create_req)
+
+    async def connect(
+        self,
+        bucket_name: str,
+        secret_seed: Optional[str] = None,
+    ) -> bucket.AsyncBucket:
+        """Returns an asynchronous client to the Blyss bucket. Identical functionality to `BucketService.connect`."""
+        b = bucket.AsyncBucket(self._api, bucket_name, secret_seed=secret_seed)
+        await b.async_init()
+        return b
+
+    async def exists(self, name: str) -> bool:
+        return await self._api.exists(name)
+
+    async def list_buckets(self) -> dict[str, Any]:
+        buckets = {}
+        for b in (await self._api.list_buckets())["buckets"]:
             n = b.pop("name")
             buckets[n] = b
         return buckets
