@@ -1,5 +1,6 @@
 use std::{collections::HashMap, io::Read};
 
+use base64::{engine::general_purpose, Engine};
 use bzip2::{read::BzEncoder, Compression};
 use sha2::{Digest, Sha256};
 use spiral_rs::params::Params;
@@ -125,30 +126,20 @@ pub fn update_row(row: &mut Vec<u8>, key: &str, value: &[u8]) {
     }
 }
 
-pub fn unwrap_kv_pairs(data: &[u8]) -> Vec<(&str, &[u8])> {
+pub fn unwrap_kv_pairs(data: &[u8]) -> Vec<(String, Vec<u8>)> {
     let mut kv_pairs = Vec::new();
-    let mut i = 0;
-    while i < data.len() {
-        // 1. Read key length.
-        let (key_len, key_len_bytes) = varint_decode(&data[i..]);
-        i += key_len_bytes;
 
-        // 2. Read key.
-        let key_bytes = &data[i..i + key_len];
-        i += key_len;
-
-        // 3. Read value length.
-        let (value_len, value_len_bytes) = varint_decode(&data[i..]);
-        i += value_len_bytes;
-
-        // 4. Read value.
-        let value_bytes = &data[i..i + value_len];
-        i += value_len;
-
-        // 5. Yield key/value pair.
-        let pair = (std::str::from_utf8(key_bytes).unwrap(), value_bytes);
-        kv_pairs.push(pair);
+    // Parse the data as a JSON object
+    if let Ok(json_data) = serde_json::from_slice::<HashMap<String, String>>(data) {
+        for (key, base64_value) in json_data.iter() {
+            // Decode the Base64-encoded value
+            if let Ok(decoded_value) = base64::decode(base64_value) {
+                kv_pairs.push((key.clone(), decoded_value));
+            }
+        }
     }
+    // print KV pairs
+    println!("kv_pairs: {:?}", kv_pairs);
 
     kv_pairs
 }

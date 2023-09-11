@@ -175,33 +175,6 @@ export class Bucket {
     );
 
     return endResults;
-
-    // const queries: { key: string; queryData: Uint8Array }[] = [];
-    // for (const key of keys) {
-    //   const rowIdx = this.lib.getRow(key);
-    //   const queryData = this.lib.generateQuery(this.uuid, rowIdx);
-    //   queries.push({ key, queryData });
-    // }
-
-    // const endResults = [];
-    // const batches = Math.ceil(queries.length / this.batchSize);
-    // for (let i = 0; i < batches; i++) {
-    //   const queriesForBatch = queries.slice(
-    //     i * this.batchSize,
-    //     (i + 1) * this.batchSize
-    //   );
-
-    //   const queryBatch = serializeChunks(queriesForBatch.map(x => x.queryData));
-    //   const rawResultChunks = await this.getRawResponse(queryBatch);
-    //   const rawResults = deserializeChunks(rawResultChunks);
-
-    //   const batchEndResults = await Promise.all(
-    //     rawResults.map((r, i) => this.getEndResult(queriesForBatch[i].key, r))
-    //   );
-
-    //   endResults.push(...batchEndResults);
-    // }
-
   }
 
   private async performPrivateRead(key: string): Promise<any> {
@@ -357,10 +330,20 @@ export class Bucket {
    *   1024 UTF-8 bytes.
    */
   async write(
-    keyValuePairs: { [key: string]: Uint8Array | null }
+    keyValuePairs: { [key: string]: Uint8Array | string | null }
   ) {
     this.ensureSpiral();
-    await this.api.write(this.name, keyValuePairs);
+    // convert any string KV pairs to Uint8Array
+    const kvPairs: { [key: string]: Uint8Array | null } = {};
+    for (const key in keyValuePairs) {
+      const value = keyValuePairs[key];
+      if (!(value instanceof Uint8Array)) {
+        kvPairs[key] = new TextEncoder().encode(value);
+      } else {
+        kvPairs[key] = value;
+      }
+    }
+    await this.api.write(this.name, kvPairs);
   }
 
   /**

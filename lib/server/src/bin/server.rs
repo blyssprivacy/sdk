@@ -1,4 +1,5 @@
 use actix_web::HttpServer;
+use serde::Serialize;
 use spiral_rs::client::*;
 use spiral_rs::params::*;
 use spiral_rs::util::*;
@@ -17,7 +18,6 @@ use uuid::Uuid;
 
 use actix_web::error::PayloadError;
 use actix_web::{get, post, web, App};
-use base64::{engine::general_purpose, Engine as _};
 
 struct ServerState {
     params: &'static Params,
@@ -49,7 +49,11 @@ async fn write(body: web::Bytes, data: web::Data<ServerState>) -> Result<String,
     let mut db_mut = data.db.write().unwrap();
 
     let kv_pairs = unwrap_kv_pairs(&body);
-    update_database(data.params, &kv_pairs, &mut rows_mut, &mut db_mut);
+    let kv_pairs_slices: Vec<(&str, &[u8])> = kv_pairs
+        .iter()
+        .map(|(key, value)| (key.as_str(), value.as_slice()))
+        .collect();
+    update_database(data.params, &kv_pairs_slices, &mut rows_mut, &mut db_mut);
     let mut version_mut = data.version.write().unwrap();
     *version_mut += 1;
 
@@ -59,19 +63,34 @@ async fn write(body: web::Bytes, data: web::Data<ServerState>) -> Result<String,
     ))
 }
 
+#[derive(Serialize)]
+pub struct UuidResponse {
+    pub uuid: String,
+}
+
 #[post("/setup")]
 async fn setup(
-    body: web::Bytes,
+    body: String,
     data: web::Data<ServerState>,
 ) -> Result<String, actix_web::error::Error> {
+    // parse body as json str
+    let body_str = serde_json::from_str::<String>(&body).unwrap();
+    // decode body from base64
+    let client_pub_params = base64::decode(&body_str).unwrap();
     let mut pub_params_map_mut = data.pub_params.write().unwrap();
-    assert_eq!(body.len(), data.params.setup_bytes());
-    let pub_params = PublicParameters::deserialize(&data.params, &body);
+    assert_eq!(client_pub_params.len(), data.params.setup_bytes());
+    let pub_params = PublicParameters::deserialize(&data.params, &client_pub_params);
 
     let uuid = Uuid::new_v4();
     pub_params_map_mut.insert(uuid.to_string(), pub_params);
 
-    Ok(format!("{{\"uuid\":\"{}\"}}", uuid.to_string()))
+    // return uuid as JSON string
+    let uuid_json = serde_json::to_string(&UuidResponse {
+        uuid: uuid.to_string(),
+    })
+    .unwrap();
+
+    Ok(uuid_json)
 }
 
 const UUID_V4_STR_BYTES: usize = 36;
@@ -126,22 +145,22 @@ async fn private_read(
     body: web::Bytes,
     data: web::Data<ServerState>,
 ) -> Result<String, actix_web::error::Error> {
-    let mut out = Vec::new();
-    let mut i = 0;
-    let num_chunks = u64::from_le_bytes(body[..8].try_into().unwrap()) as usize;
-    i += 8;
-    out.extend(u64::to_le_bytes(num_chunks as u64));
-    for _ in 0..num_chunks {
-        let chunk_len = u64::from_le_bytes(body[i..i + 8].try_into().unwrap()) as usize;
-        i += 8;
-        let result = private_read_impl(&body[i..i + chunk_len], data.clone()).await?;
-        i += chunk_len;
+    // parse body as list of json strings
+    let query_strs = serde_json::from_slice::<Vec<String>>(&body).unwrap();
 
-        out.extend(u64::to_le_bytes(result.len() as u64));
-        out.extend(result);
+    let mut out = Vec::new();
+    for query_str in query_strs.iter() {
+        // decode each query from base64
+        let query_bytes = base64::decode(query_str).unwrap();
+        let result = private_read_impl(&query_bytes, data.clone()).await?;
+        // store base64-encoded results in out
+        let result_str = base64::encode(&result);
+        out.push(result_str);
     }
 
-    Ok(general_purpose::STANDARD.encode(out))
+    let out_json = serde_json::to_string(&out).unwrap();
+
+    Ok(out_json)
 }
 
 #[get("/meta")]

@@ -30,14 +30,6 @@ function generateKeys(n: number, seed: number = 0): string[] {
     );
 }
 
-// async function generateKVPairs(n: number, seed: number, itemSize: number): Promise<{ [key: string]: Uint8Array }> {
-//     const keys = generateKeys(n, seed);
-//     const kvPairs: { [key: string]: Uint8Array } = {};
-//     keys.forEach(async key => {
-//         kvPairs[key] = await keyToValue(key, itemSize);
-//     });
-//     return kvPairs;
-// }
 
 async function generateKVPairs(n: number, seed: number, itemSize: number): Promise<{ [key: string]: Uint8Array }> {
     const keys = generateKeys(n, seed);

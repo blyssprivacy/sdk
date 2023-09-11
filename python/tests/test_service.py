@@ -43,7 +43,7 @@ def generateBucketName() -> str:
 async def test_e2e_async(
     endpoint: str, api_key: str, N: int = 4000, itemSize: int = 32
 ):
-    client = blyss.AsyncClient({"endpoint": endpoint, "api_key": api_key})
+    client = blyss.AsyncClient(api_key, endpoint)
     # generate random string for bucket name
     bucket_name = generateBucketName()
     await client.create(bucket_name, usage_hints={"maxItemSize": 40_000})
@@ -114,7 +114,7 @@ async def test_e2e_async(
 
 
 def test_e2e(endpoint: str, api_key: str, N: int = 4000, itemSize: int = 32):
-    client = blyss.Client({"endpoint": endpoint, "api_key": api_key})
+    client = blyss.Client(api_key, endpoint)
     # generate random string for bucket name
     bucket_name = generateBucketName()
     client.create(bucket_name, usage_hints={"maxItemSize": 40_000})
