@@ -247,7 +247,7 @@ pub struct ApiClient {
 impl ApiClient {
     /// Create a new API client for the given URL and API key.
     ///
-    /// The URL should be the URL of the bucket, e.g. `https://beta.api.blyss.dev/global.abc123`.
+    /// The URL should be the URL of the bucket, e.g. `https://alpha.api.blyss.dev/global.abc123`.
     pub async fn new(url: &str, api_key: &str) -> Result<Self, Error> {
         let metadata = get_meta(url, api_key).await?;
         let params_value = serde_json::from_str::<Value>(&metadata)?

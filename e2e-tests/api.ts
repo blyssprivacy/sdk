@@ -136,6 +136,6 @@ async function main(endpoint: string, apiKey: string) {
 }
 
 // get endpoint and api key from command line, or fallback to defaults
-const endpoint = process.argv[2] || 'https://beta.api.blyss.dev';
+const endpoint = process.argv[2] || 'https://alpha.api.blyss.dev';
 const apiKey = process.argv[3] || process.env.BLYSS_API_KEY;
 main(endpoint, apiKey);

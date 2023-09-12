@@ -1,4 +1,8 @@
 {
     "python.analysis.typeCheckingMode": "basic",
-    "editor.formatOnSave": true
+    "editor.formatOnSave": true,
+    "rust-analyzer.linkedProjects": [
+        "./lib/spiral-rs/Cargo.toml",
+        "./lib/server/Cargo.toml"
+    ]
 }

@@ -41,7 +41,7 @@ You can get an API key by [signing up](https://blyss.dev), or run a server local
 
 You can quickly try using the SDK with our managed service without downloading anything.
 
-1. Get an API key by [signing up here](https://blyss.dev).
+1. Get an API key by [signing up here](https://playground.blyss.dev).
 2. Open [this StackBlitz](https://stackblitz.com/edit/blyss-private-contact-intersection) and enter your API key where it says `<YOUR API KEY HERE>`.
 3. Try adding users to the service using the "Add a user" button. As you add more users, the service will _privately_ intersect each new users's contacts and the already existing users.
    Every user's list of contacts stays completely private using homomorphic encryption: it never leaves their device unencrypted.

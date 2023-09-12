@@ -1,7 +1,4 @@
 import blyss
-import logging
-import requests
-import json
 
 api_key = "<YOUR API KEY HERE>"
 client = blyss.Client(api_key)
@@ -18,20 +15,15 @@ bucket = client.connect(bucket_name)
 # Write some data to it
 bucket.write(
     {
-        "California": "Sacramento",
-        "Ohio": "Columbus",
-        "New York": "Albany",
+        "California": b"Sacramento",
+        "Ohio": b"Columbus",
+        "New York": b"Albany",
     }
 )
 
 # This is a completely *private* query:
 # the server *cannot* learn that you looked up "California"!
 print("Privately reading the capital of California...")
-capital = bucket.private_read("California")
+query_results = bucket.private_read(["California"])
+capital = query_results[0].decode("utf-8")
 print(f"Got '{capital}'!")
-
-# This is a completely *private* intersection operation:
-# the server *cannot* learn that the set was ['Wyoming', 'California', 'Ohio']!
-set_to_test = ["Wyoming", "California", "Ohio"]
-intersection = bucket.private_key_intersect(set_to_test)
-print(f"Intersection of {set_to_test} and bucket yielded: {intersection}")

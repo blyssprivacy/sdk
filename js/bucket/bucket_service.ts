@@ -18,7 +18,7 @@ const DEFAULT_BUCKET_PARAMETERS: BucketParameters = {
   version: 1
 };
 
-const BLYSS_BUCKET_URL = 'https://beta.api.blyss.dev';
+const BLYSS_BUCKET_URL = 'https://alpha.api.blyss.dev';
 export const BLYSS_HINT_URL_PREFIX =
   'https://blyss-hints.s3.us-east-2.amazonaws.com/';
 /** Information specifying how to connect to a Blyss bucket service API endpoint. */
