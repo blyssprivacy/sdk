@@ -17,8 +17,17 @@ impl SparseDb {
         }
     }
 
-    pub fn get_idx(&self, idx: usize) -> Option<&usize> {
+    fn get_idx(&self, idx: usize) -> Option<&usize> {
         self.db_idx_to_vec_idx.get(&idx)
+    }
+
+    pub fn get_item(&self, idx: usize) -> Option<&[u64]> {
+        let opt_vec_idx = self.get_idx(idx);
+        if let Some(vec_idx) = opt_vec_idx {
+            Some(self.data[*vec_idx].as_slice())
+        } else {
+            None
+        }
     }
 
     pub fn add(&mut self, idx: usize, data: &[u64]) {

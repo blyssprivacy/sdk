@@ -33,29 +33,13 @@ pub fn multiply_reg_by_sparse_database(
         for j in 0..dim0 {
             for i in 0..num_per {
                 let full_idx = db_idx * (dim0 * num_per) + j * num_per + i;
-                let result = db.get_idx(full_idx);
-                // if (j * num_per) + i == 14706 {
-                //     println!("sparsedb at 14706 (full_idx: {}) is {:?}", full_idx, result);
-                //     println!("moduli {:?} qmod {}", params.moduli, params.modulus);
-                // }
-                if result.is_none() {
+
+                let b_poly = db.get_item(full_idx);
+                if b_poly.is_none() {
                     continue;
                 }
-                let real_idx = *result.unwrap();
-                // println!("doing full_idx: {}", full_idx);
-                // println!("at real_idx: {}", real_idx);
+                let b_poly = b_poly.unwrap();
 
-                let b_poly = db.data[real_idx].as_slice();
-                // if (j * num_per) + i == 14706 {
-                //     println!(
-                //         "sparsedb at 14706 (full_idx: {}) contains data {} {} ...",
-                //         full_idx, b_poly[0], b_poly[1]
-                //     );
-                //     // println!(
-                //     //     "sparsedb at 14706 (full_idx: {}) contains data {:?}",
-                //     //     full_idx, b_poly
-                //     // );
-                // }
                 for z in (0..poly_len).step_by(4) {
                     let v_a1 = query.get_unchecked((j * 2) * poly_len + z) as *const u64;
                     let v_a2 = query.get_unchecked((j * 2 + 1) * poly_len + z) as *const u64;
@@ -344,7 +328,9 @@ mod test {
         let total_idx_sz = params.instances * params.n * params.n * dim0 * num_per;
         println!("total_idx_sz: {}", total_idx_sz);
         let mut data = vec![0u64; params.poly_len];
-        for _ in 0..100 {
+        let mut insertion_time_sum: u64 = 0;
+        const N_INSERTIONS: usize = 100;
+        for _ in 0..N_INSERTIONS {
             let rand_idx = rng.gen::<usize>() % total_idx_sz;
             let mut db_item = PolyMatrixRaw::random(&params, 1, 1);
             for z in 0..params.poly_len {
@@ -362,8 +348,12 @@ mod test {
                     | (db_item_ntt.data[params.poly_len + z] << PACKED_OFFSET_2);
             }
             db.add(rand_idx, data.as_slice());
-            println!("add took {} us", start.elapsed().as_micros())
+            insertion_time_sum += start.elapsed().as_micros() as u64;
         }
+        println!(
+            "Avg insertion time: {:.0} us",
+            insertion_time_sum as f64 / N_INSERTIONS as f64
+        );
 
         let start = Instant::now();
         multiply_reg_by_sparse_database(
