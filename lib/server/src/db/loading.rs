@@ -110,7 +110,9 @@ pub fn generate_fake_sparse_db_and_get_item<'a>(
     let trials = params.n * params.n;
     let update_req_sz = 4 + instances * trials * params.bytes_per_chunk();
 
-    let mut db = SparseDb::new();
+    let inst_trials = params.instances * params.n * params.n;
+    let db_row_size = params.poly_len * inst_trials * std::mem::size_of::<u64>();
+    let mut db = SparseDb::new(None, db_row_size);
 
     let mut rng = thread_rng();
     let mut corr_db_item =
@@ -350,10 +352,9 @@ pub fn update_item_raw(
         .collect();
     let upsert_time = now.elapsed().as_micros();
 
-    for (inst_trial, result) in results.iter().enumerate() {
-        let idx_out = inst_trial * params.num_items() + db_idx;
-        db.upsert(idx_out, result);
-    }
+    let concatenated_results: Vec<u64> = results.iter().flat_map(|result| result.clone()).collect();
+
+    db.upsert(db_idx, &concatenated_results);
 
     Ok(upsert_time as u64)
 }

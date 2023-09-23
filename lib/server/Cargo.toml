@@ -36,6 +36,7 @@ uuid = { version = "1.0.0", features = ["v4"] }
 sha2 = "0.10.6"
 bzip2 = "0.4.4"
 base64 = "0.21.0"
+memmapix = "0.7.6"
 
 [profile.release-with-debug]
 inherits = "release"

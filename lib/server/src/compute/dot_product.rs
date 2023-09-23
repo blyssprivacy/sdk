@@ -23,6 +23,124 @@ pub fn multiply_reg_by_sparse_database(
     //    db:  [inst_trials, num_per, dim0, poly_len]
     // query:  [dim0, ct_rows, poly_len]
 
+    //   out:  [num_per, crt_count, poly_len]
+
+    //    db:  [poly_len,              num_per, dim0]
+    // query:  [poly_len,                       dim0, ct_rows]
+
+    panic!("Not implemented");
+
+    // let poly_len = params.poly_len;
+    // let crt_count = params.crt_count;
+    // assert_eq!(crt_count, 2);
+
+    // let mut adds = 0;
+
+    // unsafe {
+    //     for j in 0..dim0 {
+    //         for i in 0..num_per {
+    //             let full_idx = db_idx * (dim0 * num_per) + j * num_per + i;
+
+    //             let b_poly = db.get_item(full_idx);
+    //             if b_poly.is_none() {
+    //                 continue;
+    //             }
+    //             let b_poly = b_poly.unwrap();
+
+    //             for z in (0..poly_len).step_by(4) {
+    //                 let v_a1 = query.get_unchecked((j * 2) * poly_len + z) as *const u64;
+    //                 let v_a2 = query.get_unchecked((j * 2 + 1) * poly_len + z) as *const u64;
+    //                 let v_b = b_poly.get_unchecked(z) as *const u64;
+
+    //                 let a1 = _mm256_load_si256(v_a1 as *const __m256i);
+    //                 let a2 = _mm256_load_si256(v_a2 as *const __m256i);
+    //                 let b = _mm256_load_si256(v_b as *const __m256i);
+
+    //                 let a1_lo = a1;
+    //                 let a1_hi = _mm256_srli_epi64(a1, PACKED_OFFSET_2);
+    //                 let a2_lo = a2;
+    //                 let a2_hi = _mm256_srli_epi64(a2, PACKED_OFFSET_2);
+    //                 let b_lo = b;
+    //                 let b_hi = _mm256_srli_epi64(b, PACKED_OFFSET_2);
+
+    //                 let c1_lo_loc = ((&mut out[i].data[z]) as *mut u64) as *mut __m256i;
+    //                 let c1_hi_loc = ((&mut out[i].data[poly_len + z]) as *mut u64) as *mut __m256i;
+    //                 let c2_lo_loc =
+    //                     ((&mut out[i].data[2 * poly_len + z]) as *mut u64) as *mut __m256i;
+    //                 let c2_hi_loc =
+    //                     ((&mut out[i].data[3 * poly_len + z]) as *mut u64) as *mut __m256i;
+
+    //                 let mut c1_lo = _mm256_load_si256(c1_lo_loc);
+    //                 let mut c1_hi = _mm256_load_si256(c1_hi_loc);
+    //                 let mut c2_lo = _mm256_load_si256(c2_lo_loc);
+    //                 let mut c2_hi = _mm256_load_si256(c2_hi_loc);
+
+    //                 c1_lo = _mm256_add_epi64(c1_lo, _mm256_mul_epu32(a1_lo, b_lo));
+    //                 c1_hi = _mm256_add_epi64(c1_hi, _mm256_mul_epu32(a1_hi, b_hi));
+    //                 c2_lo = _mm256_add_epi64(c2_lo, _mm256_mul_epu32(a2_lo, b_lo));
+    //                 c2_hi = _mm256_add_epi64(c2_hi, _mm256_mul_epu32(a2_hi, b_hi));
+
+    //                 _mm256_store_si256(c1_lo_loc, c1_lo);
+    //                 _mm256_store_si256(c1_hi_loc, c1_hi);
+    //                 _mm256_store_si256(c2_lo_loc, c2_lo);
+    //                 _mm256_store_si256(c2_hi_loc, c2_hi);
+
+    //                 if adds >= MAX_SUMMED {
+    //                     for z_in in 0..4 {
+    //                         out[i].data[z + z_in] =
+    //                             barrett_coeff_u64(params, out[i].data[z + z_in], 0);
+    //                         out[i].data[poly_len + z + z_in] =
+    //                             barrett_coeff_u64(params, out[i].data[poly_len + z + z_in], 1);
+    //                         out[i].data[2 * poly_len + z + z_in] =
+    //                             barrett_coeff_u64(params, out[i].data[2 * poly_len + z + z_in], 0);
+    //                         out[i].data[3 * poly_len + z + z_in] =
+    //                             barrett_coeff_u64(params, out[i].data[3 * poly_len + z + z_in], 1);
+    //                     }
+    //                     // *c1_lo_loc = barrett_coeff_u64(params, *c1_lo_loc, 0);
+    //                     // *c1_hi_loc = barrett_coeff_u64(params, *c1_hi_loc, 0);
+    //                     // *c2_lo_loc = barrett_coeff_u64(params, *c2_lo_loc, 1);
+    //                     // *c2_hi_loc = barrett_coeff_u64(params, *c2_hi_loc, 1);
+    //                 }
+    //             }
+    //         }
+    //         adds += 1;
+    //         if adds >= MAX_SUMMED {
+    //             adds = 0;
+    //         }
+    //     }
+
+    //     for i in 0..num_per {
+    //         for z in (0..poly_len).step_by(4) {
+    //             for z_in in 0..4 {
+    //                 out[i].data[z + z_in] = barrett_coeff_u64(params, out[i].data[z + z_in], 0);
+    //                 out[i].data[poly_len + z + z_in] =
+    //                     barrett_coeff_u64(params, out[i].data[poly_len + z + z_in], 1);
+    //                 out[i].data[2 * poly_len + z + z_in] =
+    //                     barrett_coeff_u64(params, out[i].data[2 * poly_len + z + z_in], 0);
+    //                 out[i].data[3 * poly_len + z + z_in] =
+    //                     barrett_coeff_u64(params, out[i].data[3 * poly_len + z + z_in], 1);
+    //             }
+    //         }
+    //     }
+    // }
+}
+
+#[cfg(target_feature = "avx2")]
+pub fn multiply_reg_by_db(
+    out: &mut Vec<PolyMatrixNTT>,
+    // [inst_trials, num_per, PMNTT]
+    sparse_db: &SparseDb,
+    query: &[u64],
+    params: &Params,
+    dim0: usize,
+    num_per: usize,
+    inst_trials: usize,
+) {
+    //    db:  (num_per, dim0) -> (inst_trials, poly_len)
+
+    // query:  [dim0, ct_rows, poly_len]
+    //   out:  [inst_trials, num_per, PolyMatrixNTT]
+
     let poly_len = params.poly_len;
     let crt_count = params.crt_count;
     assert_eq!(crt_count, 2);
@@ -32,76 +150,92 @@ pub fn multiply_reg_by_sparse_database(
     unsafe {
         for j in 0..dim0 {
             for i in 0..num_per {
-                let full_idx = db_idx * (dim0 * num_per) + j * num_per + i;
-
-                let b_poly = db.get_item(full_idx);
-                if b_poly.is_none() {
+                let full_idx = j * num_per + i;
+                let db_row_mmap = sparse_db.get_item(full_idx);
+                if db_row_mmap.is_none() {
                     continue;
                 }
-                let b_poly = b_poly.unwrap();
+                let db_row_mmap = db_row_mmap.unwrap();
+                let db_row = SparseDb::mmap_to_slice(&db_row_mmap);
 
-                for z in (0..poly_len).step_by(4) {
-                    let v_a1 = query.get_unchecked((j * 2) * poly_len + z) as *const u64;
-                    let v_a2 = query.get_unchecked((j * 2 + 1) * poly_len + z) as *const u64;
-                    let v_b = b_poly.get_unchecked(z) as *const u64;
+                for it in 0..inst_trials {
+                    let b_poly = db_row.get_unchecked(it * poly_len) as *const u64;
+                    let out_idx = it * num_per + i;
 
-                    let a1 = _mm256_load_si256(v_a1 as *const __m256i);
-                    let a2 = _mm256_load_si256(v_a2 as *const __m256i);
-                    let b = _mm256_load_si256(v_b as *const __m256i);
+                    for z in (0..poly_len).step_by(4) {
+                        let v_a1 = query.get_unchecked((j * 2) * poly_len + z) as *const u64;
+                        let v_a2 = query.get_unchecked((j * 2 + 1) * poly_len + z) as *const u64;
+                        let v_b = b_poly.add(z);
 
-                    let a1_lo = a1;
-                    let a1_hi = _mm256_srli_epi64(a1, PACKED_OFFSET_2);
-                    let a2_lo = a2;
-                    let a2_hi = _mm256_srli_epi64(a2, PACKED_OFFSET_2);
-                    let b_lo = b;
-                    let b_hi = _mm256_srli_epi64(b, PACKED_OFFSET_2);
+                        let a1 = _mm256_loadu_si256(v_a1 as *const __m256i);
+                        let a2 = _mm256_loadu_si256(v_a2 as *const __m256i);
+                        let b = _mm256_loadu_si256(v_b as *const __m256i);
 
-                    let c1_lo_loc = ((&mut out[i].data[z]) as *mut u64) as *mut __m256i;
-                    let c1_hi_loc = ((&mut out[i].data[poly_len + z]) as *mut u64) as *mut __m256i;
-                    let c2_lo_loc =
-                        ((&mut out[i].data[2 * poly_len + z]) as *mut u64) as *mut __m256i;
-                    let c2_hi_loc =
-                        ((&mut out[i].data[3 * poly_len + z]) as *mut u64) as *mut __m256i;
+                        let a1_lo = a1;
+                        let a1_hi = _mm256_srli_epi64(a1, PACKED_OFFSET_2);
+                        let a2_lo = a2;
+                        let a2_hi = _mm256_srli_epi64(a2, PACKED_OFFSET_2);
+                        let b_lo = b;
+                        let b_hi = _mm256_srli_epi64(b, PACKED_OFFSET_2);
 
-                    let mut c1_lo = _mm256_load_si256(c1_lo_loc);
-                    let mut c1_hi = _mm256_load_si256(c1_hi_loc);
-                    let mut c2_lo = _mm256_load_si256(c2_lo_loc);
-                    let mut c2_hi = _mm256_load_si256(c2_hi_loc);
+                        let c1_lo_loc = ((&mut out[out_idx].data[z]) as *mut u64) as *mut __m256i;
+                        let c1_hi_loc =
+                            ((&mut out[out_idx].data[poly_len + z]) as *mut u64) as *mut __m256i;
+                        let c2_lo_loc = ((&mut out[out_idx].data[2 * poly_len + z]) as *mut u64)
+                            as *mut __m256i;
+                        let c2_hi_loc = ((&mut out[out_idx].data[3 * poly_len + z]) as *mut u64)
+                            as *mut __m256i;
 
-                    c1_lo = _mm256_add_epi64(c1_lo, _mm256_mul_epu32(a1_lo, b_lo));
-                    c1_hi = _mm256_add_epi64(c1_hi, _mm256_mul_epu32(a1_hi, b_hi));
-                    c2_lo = _mm256_add_epi64(c2_lo, _mm256_mul_epu32(a2_lo, b_lo));
-                    c2_hi = _mm256_add_epi64(c2_hi, _mm256_mul_epu32(a2_hi, b_hi));
+                        let mut c1_lo = _mm256_loadu_si256(c1_lo_loc);
+                        let mut c1_hi = _mm256_loadu_si256(c1_hi_loc);
+                        let mut c2_lo = _mm256_loadu_si256(c2_lo_loc);
+                        let mut c2_hi = _mm256_loadu_si256(c2_hi_loc);
 
-                    _mm256_store_si256(c1_lo_loc, c1_lo);
-                    _mm256_store_si256(c1_hi_loc, c1_hi);
-                    _mm256_store_si256(c2_lo_loc, c2_lo);
-                    _mm256_store_si256(c2_hi_loc, c2_hi);
+                        c1_lo = _mm256_add_epi64(c1_lo, _mm256_mul_epu32(a1_lo, b_lo));
+                        c1_hi = _mm256_add_epi64(c1_hi, _mm256_mul_epu32(a1_hi, b_hi));
+                        c2_lo = _mm256_add_epi64(c2_lo, _mm256_mul_epu32(a2_lo, b_lo));
+                        c2_hi = _mm256_add_epi64(c2_hi, _mm256_mul_epu32(a2_hi, b_hi));
 
-                    adds += 1;
+                        _mm256_storeu_si256(c1_lo_loc, c1_lo);
+                        _mm256_storeu_si256(c1_hi_loc, c1_hi);
+                        _mm256_storeu_si256(c2_lo_loc, c2_lo);
+                        _mm256_storeu_si256(c2_hi_loc, c2_hi);
 
-                    if adds >= MAX_SUMMED {
-                        adds = 0;
-                        for z_in in 0..4 {
-                            out[i].data[z + z_in] =
-                                barrett_coeff_u64(params, out[i].data[z + z_in], 0);
-                            out[i].data[poly_len + z + z_in] =
-                                barrett_coeff_u64(params, out[i].data[poly_len + z + z_in], 1);
-                            out[i].data[2 * poly_len + z + z_in] =
-                                barrett_coeff_u64(params, out[i].data[2 * poly_len + z + z_in], 0);
-                            out[i].data[3 * poly_len + z + z_in] =
-                                barrett_coeff_u64(params, out[i].data[3 * poly_len + z + z_in], 1);
+                        if adds >= MAX_SUMMED {
+                            for z_in in 0..4 {
+                                out[out_idx].data[z + z_in] =
+                                    barrett_coeff_u64(params, out[out_idx].data[z + z_in], 0);
+                                out[out_idx].data[poly_len + z + z_in] = barrett_coeff_u64(
+                                    params,
+                                    out[out_idx].data[poly_len + z + z_in],
+                                    1,
+                                );
+                                out[out_idx].data[2 * poly_len + z + z_in] = barrett_coeff_u64(
+                                    params,
+                                    out[out_idx].data[2 * poly_len + z + z_in],
+                                    0,
+                                );
+                                out[out_idx].data[3 * poly_len + z + z_in] = barrett_coeff_u64(
+                                    params,
+                                    out[out_idx].data[3 * poly_len + z + z_in],
+                                    1,
+                                );
+                            }
+                            // *c1_lo_loc = barrett_coeff_u64(params, *c1_lo_loc, 0);
+                            // *c1_hi_loc = barrett_coeff_u64(params, *c1_hi_loc, 0);
+                            // *c2_lo_loc = barrett_coeff_u64(params, *c2_lo_loc, 1);
+                            // *c2_hi_loc = barrett_coeff_u64(params, *c2_hi_loc, 1);
                         }
-                        // *c1_lo_loc = barrett_coeff_u64(params, *c1_lo_loc, 0);
-                        // *c1_hi_loc = barrett_coeff_u64(params, *c1_hi_loc, 0);
-                        // *c2_lo_loc = barrett_coeff_u64(params, *c2_lo_loc, 1);
-                        // *c2_hi_loc = barrett_coeff_u64(params, *c2_hi_loc, 1);
                     }
                 }
             }
+            adds += 1;
+            if adds >= MAX_SUMMED {
+                adds = 0;
+            }
         }
 
-        for i in 0..num_per {
+        for i in 0..(num_per * inst_trials) {
             for z in (0..poly_len).step_by(4) {
                 for z_in in 0..4 {
                     out[i].data[z + z_in] = barrett_coeff_u64(params, out[i].data[z + z_in], 0);
@@ -324,7 +458,9 @@ mod test {
             out.push(PolyMatrixNTT::zero(&params, 2, 1));
         }
 
-        let mut db = SparseDb::new();
+        let inst_trials = params.instances * params.n * params.n;
+        let db_row_size = params.poly_len * inst_trials * std::mem::size_of::<u64>();
+        let mut db = SparseDb::new(None, db_row_size);
         let total_idx_sz = params.instances * params.n * params.n * dim0 * num_per;
         println!("total_idx_sz: {}", total_idx_sz);
         let mut data = vec![0u64; params.poly_len];
@@ -347,7 +483,7 @@ mod test {
                 data[z] = db_item_ntt.data[z]
                     | (db_item_ntt.data[params.poly_len + z] << PACKED_OFFSET_2);
             }
-            db.add(rand_idx, data.as_slice());
+            db.upsert(rand_idx, data.as_slice());
             insertion_time_sum += start.elapsed().as_micros() as u64;
         }
         println!(

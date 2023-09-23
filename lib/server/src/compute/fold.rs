@@ -14,9 +14,9 @@ fn is_all_zeros(v: &[u64]) -> bool {
 
 pub fn fold_ciphertexts(
     params: &Params,
-    v_cts: &mut Vec<PolyMatrixRaw>,
-    v_folding: &Vec<PolyMatrixNTT>,
-    v_folding_neg: &Vec<PolyMatrixNTT>,
+    v_cts: &mut [PolyMatrixRaw],
+    v_folding: &[PolyMatrixNTT],
+    v_folding_neg: &[PolyMatrixNTT],
 ) {
     if v_cts.len() == 1 {
         return;

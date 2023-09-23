@@ -31,7 +31,7 @@ pub fn process_query(
     let v_folding;
     if params.expand_queries {
         (v_reg_reoriented, v_folding) =
-            expand_query(params, public_params, query, Some(&db.db_idx_to_vec_idx));
+            expand_query(params, public_params, query, Some(&db.active_indices));
     } else {
         v_reg_reoriented = AlignedMemory64::new(query.v_buf.as_ref().unwrap().len());
         v_reg_reoriented
@@ -50,42 +50,41 @@ pub fn process_query(
     let v_folding_neg = get_v_folding_neg(params, &v_folding);
 
     let trials = params.n * params.n;
-    let v_cts: Vec<PolyMatrixRaw> = (0..(params.instances * trials))
-        .into_par_iter()
-        .map(|instance_trial| {
-            let instance = instance_trial / trials;
-            let trial = instance_trial % trials;
 
-            let mut intermediate = Vec::with_capacity(num_per);
-            let mut intermediate_raw = Vec::with_capacity(num_per);
-            for _ in 0..num_per {
-                intermediate.push(PolyMatrixNTT::zero(params, 2, 1));
-                intermediate_raw.push(PolyMatrixRaw::zero(params, 2, 1));
-            }
+    let inst_trials = params.instances * trials;
 
-            // let now = Instant::now();
-            multiply_reg_by_sparse_database(
-                &mut intermediate,
-                db,
-                v_reg_reoriented.as_slice(),
-                params,
-                dim0,
-                num_per,
-                instance * trials + trial,
-            );
-            // println!("mul took {} us", now.elapsed().as_micros());
+    let n_results = inst_trials * num_per;
 
-            // let now = Instant::now();
-            for i in 0..intermediate.len() {
-                from_ntt(&mut intermediate_raw[i], &intermediate[i]);
-            }
+    let mut intermediate = Vec::with_capacity(n_results);
+    for _ in 0..n_results {
+        intermediate.push(PolyMatrixNTT::zero(params, 2, 1));
+    }
 
+    // let now = Instant::now();
+    multiply_reg_by_db(
+        &mut intermediate,
+        db,
+        v_reg_reoriented.as_slice(),
+        params,
+        dim0,
+        num_per,
+        inst_trials,
+    );
+    // println!("mul took {} us", now.elapsed().as_micros());
+
+    // let now = Instant::now();
+
+    // for i in 0..inst_trials {
+    let v_cts: Vec<_> = intermediate
+        .chunks(num_per)
+        .map(|chunk| {
+            let mut intermediate_raw: Vec<PolyMatrixRaw> =
+                chunk.iter().map(|item| item.raw()).collect();
             fold_ciphertexts(params, &mut intermediate_raw, &v_folding, &v_folding_neg);
-            // println!("fold took {} us", now.elapsed().as_micros());
-
             intermediate_raw[0].clone()
         })
         .collect();
+    // println!("fold took {} us", now.elapsed().as_micros());
 
     let v_packed_ct = v_cts
         .par_chunks_exact(trials)
@@ -177,6 +176,12 @@ mod test {
         let dummy_items = 10000; //params.num_items();
         let (corr_db_item, db) =
             generate_fake_sparse_db_and_get_item(params, target_idx, dummy_items);
+
+        println!("generated db");
+
+        let test_item = db.get_item(target_idx).unwrap();
+        let test_data = SparseDb::mmap_to_slice(&test_item);
+        println!("test item: {:?}", &test_data[..16]);
 
         let now = Instant::now();
         let response = process_query(params, &public_params, &query, &db);

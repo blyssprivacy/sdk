@@ -251,7 +251,7 @@ pub fn expand_query<'a>(
     params: &'a Params,
     public_params: &PublicParameters<'a>,
     query: &Query<'a>,
-    indices: Option<&HashMap<usize, usize>>,
+    indices: Option<&Vec<usize>>,
 ) -> (AlignedMemory64, Vec<PolyMatrixNTT<'a>>) {
     let dim0 = 1 << params.db_dim_1;
     let further_dims = params.db_dim_2;
@@ -290,7 +290,7 @@ pub fn expand_query<'a>(
         // print!("\n");
 
         let mut set_dim0 = HashSet::new();
-        for i in inds.keys() {
+        for i in inds {
             if *i < params.num_items() {
                 set_dim0.insert(*i / (1 << params.db_dim_2));
             }
