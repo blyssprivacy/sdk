@@ -128,18 +128,19 @@ pub fn generate_fake_sparse_db_and_get_item<'a>(
         .map(|x| *x as u8)
         .collect();
 
-    for i in 0..dummy_items {
-        let dest_idx = if dummy_items == params.num_items() {
-            i
-        } else {
-            rng.gen::<usize>() % params.num_items()
-        };
-        let mut update_req = vec![0u8; update_req_sz];
-        rng.fill_bytes(&mut update_req[4..]);
-        update_req[0..4].copy_from_slice(&(dest_idx as u32).to_be_bytes());
-        update_item(params, &update_req, &mut db).unwrap();
-    }
+    let dummy_row_indices = (0..dummy_items)
+        .map(|_| rng.gen::<usize>() % params.num_items())
+        .collect::<Vec<_>>();
 
+    dummy_row_indices.par_iter().for_each(|&dest_idx| {
+        let mut drng = thread_rng();
+        let mut update_req = vec![0u8; update_req_sz];
+        drng.fill_bytes(&mut update_req[4..]);
+        update_req[0..4].copy_from_slice(&(dest_idx as u32).to_be_bytes());
+        update_item(params, &update_req, &db).unwrap();
+    });
+
+    // inject target item
     let mut update_req = vec![0u8; update_req_sz];
     (&mut update_req[4..]).copy_from_slice(&corr_bytes[..update_req_sz - 4]);
     update_req[0..4].copy_from_slice(&(item_idx as u32).to_be_bytes());
@@ -300,7 +301,7 @@ pub fn convert_pt_to_poly<'a>(params: &'a Params, data: &[u8]) -> PolyMatrixNTT<
     item.ntt()
 }
 
-pub fn update_item(params: &Params, body: &[u8], db: &mut SparseDb) -> Result<u64, Error> {
+pub fn update_item(params: &Params, body: &[u8], db: &SparseDb) -> Result<u64, Error> {
     let instances = params.instances;
     let trials = params.n * params.n;
 
@@ -320,7 +321,7 @@ pub fn update_item_raw(
     params: &Params,
     db_idx: usize,
     data: &[u8],
-    db: &mut SparseDb,
+    db: &SparseDb,
 ) -> Result<u64, Error> {
     let instances = params.instances;
     let trials = params.n * params.n;

@@ -31,7 +31,7 @@ pub fn process_query(
     let v_folding;
     if params.expand_queries {
         (v_reg_reoriented, v_folding) =
-            expand_query(params, public_params, query, Some(&db.active_item_ids));
+            expand_query(params, public_params, query, Some(&db.get_active_ids()));
     } else {
         v_reg_reoriented = AlignedMemory64::new(query.v_buf.as_ref().unwrap().len());
         v_reg_reoriented
@@ -182,10 +182,6 @@ mod test {
             dummy_items,
             stamp.elapsed().as_millis()
         );
-
-        let test_item = db.get_item(target_idx).unwrap();
-        let test_data = SparseDb::mmap_to_slice(&test_item);
-        println!("test item: {:?}", &test_data[..16]);
 
         stamp = Instant::now();
         let response = process_query(params, &public_params, &query, &db);
