@@ -4,7 +4,8 @@ use memmapix::{Mmap, MmapMut};
 
 pub struct SparseDb {
     path: String,
-    pub active_indices: Vec<usize>,
+    // indices of nonzero rows, sorted
+    pub active_item_ids: Vec<usize>,
     item_size: usize,
 }
 impl SparseDb {
@@ -12,7 +13,7 @@ impl SparseDb {
         Self {
             // if path is None, use "/tmp/sparsedb"
             path: path.unwrap_or_else(|| String::from("/tmp/sparsedb")),
-            active_indices: Vec::new(),
+            active_item_ids: Vec::new(),
             item_size,
         }
     }
@@ -22,9 +23,9 @@ impl SparseDb {
         file_path
     }
 
-    fn read_file(&self, idx: usize) -> Option<File> {
+    fn read_file(&self, idx: usize) -> File {
         let file_path = self.idx_2_fpath(idx);
-        File::open(file_path).ok()
+        File::open(file_path).unwrap()
     }
 
     fn write_file(&self, idx: usize) -> File {
@@ -40,28 +41,13 @@ impl SparseDb {
     }
 
     pub fn get_item(&self, idx: usize) -> Option<Mmap> {
-        let file = self.read_file(idx)?;
+        let (found, _) = self.index_of_item(idx);
+        if !found {
+            return None;
+        }
+        let file = self.read_file(idx);
         let mmap = unsafe { Mmap::map(&file).unwrap() };
-        // let bytes = mmap.as_ref();
-
-        // assert_eq!(
-        //     bytes.as_ptr() as usize % 32,
-        //     0,
-        //     "Bytes not aligned to 32 bytes"
-        // );
-
         Some(mmap)
-
-        // if bytes.len() % std::mem::size_of::<u64>() == 0 {
-        //     Some(unsafe {
-        //         std::slice::from_raw_parts(
-        //             bytes.as_ptr() as *const u64,
-        //             bytes.len() / std::mem::size_of::<u64>(),
-        //         )
-        //     })
-        // } else {
-        //     None
-        // }
     }
 
     pub fn mmap_to_slice(mmap: &Mmap) -> &[u64] {
@@ -69,19 +55,49 @@ impl SparseDb {
         assert_eq!(
             bytes.as_ptr() as usize % 32,
             0,
-            "Bytes not aligned to 32 bytes"
+            "Row base address not aligned to 32 bytes"
         );
 
-        if bytes.len() % std::mem::size_of::<u64>() == 0 {
-            unsafe {
-                std::slice::from_raw_parts(
-                    bytes.as_ptr() as *const u64,
-                    bytes.len() / std::mem::size_of::<u64>(),
-                )
-            }
-        } else {
-            panic!("Bytes not aligned to 8 bytes")
+        assert_eq!(
+            bytes.len() % std::mem::size_of::<u64>(),
+            0,
+            "Row size not divisible by 8 bytes; malformed u64's"
+        );
+        unsafe {
+            std::slice::from_raw_parts(
+                bytes.as_ptr() as *const u64,
+                bytes.len() / std::mem::size_of::<u64>(),
+            )
         }
+    }
+
+    fn index_of_item(&self, idx: usize) -> (bool, usize) {
+        if self.active_item_ids.is_empty() {
+            return (false, 0);
+        }
+
+        let pp = self.active_item_ids.partition_point(|&x| x < idx);
+
+        if pp == self.active_item_ids.len() {
+            return (false, pp);
+        }
+
+        if self.active_item_ids[pp] == idx {
+            (true, pp)
+        } else {
+            (false, pp)
+        }
+    }
+
+    pub fn delete(&mut self, idx: usize) {
+        let (found, pp) = self.index_of_item(idx);
+        if !found {
+            return;
+        }
+
+        let file_path = self.idx_2_fpath(idx);
+        std::fs::remove_file(file_path).ok();
+        self.active_item_ids.remove(pp);
     }
 
     pub fn upsert(&mut self, idx: usize, data: &[u64]) {
@@ -96,8 +112,9 @@ impl SparseDb {
             mmap.flush().unwrap();
         }
 
-        if !self.active_indices.contains(&idx) {
-            self.active_indices.push(idx);
+        let (found, pp) = self.index_of_item(idx);
+        if !found {
+            self.active_item_ids.insert(pp, idx);
         }
     }
 }

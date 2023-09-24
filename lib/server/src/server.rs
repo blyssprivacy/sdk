@@ -31,7 +31,7 @@ pub fn process_query(
     let v_folding;
     if params.expand_queries {
         (v_reg_reoriented, v_folding) =
-            expand_query(params, public_params, query, Some(&db.active_indices));
+            expand_query(params, public_params, query, Some(&db.active_item_ids));
     } else {
         v_reg_reoriented = AlignedMemory64::new(query.v_buf.as_ref().unwrap().len());
         v_reg_reoriented
@@ -173,24 +173,28 @@ mod test {
         let pp_sz = public_params.serialize().len();
         let query = client.generate_query(target_idx);
 
+        let mut stamp = Instant::now();
         let dummy_items = 10000; //params.num_items();
         let (corr_db_item, db) =
             generate_fake_sparse_db_and_get_item(params, target_idx, dummy_items);
-
-        println!("generated db");
+        println!(
+            "generated {} items in {} ms",
+            dummy_items,
+            stamp.elapsed().as_millis()
+        );
 
         let test_item = db.get_item(target_idx).unwrap();
         let test_data = SparseDb::mmap_to_slice(&test_item);
         println!("test item: {:?}", &test_data[..16]);
 
-        let now = Instant::now();
+        stamp = Instant::now();
         let response = process_query(params, &public_params, &query, &db);
         println!(
             "pub params: {} bytes ({} actual)",
             params.setup_bytes(),
             pp_sz
         );
-        println!("processing took {} us", now.elapsed().as_micros());
+        println!("processing took {} us", stamp.elapsed().as_micros());
         println!("response: {} bytes", response.len());
 
         let result = client.decode_response(response.as_slice());
