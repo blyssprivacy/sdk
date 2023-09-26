@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use spiral_rs::arith::*;
 use spiral_rs::client::PublicParameters;
 use spiral_rs::client::Query;
@@ -60,8 +62,8 @@ pub fn process_query(
         intermediate.push(PolyMatrixNTT::zero(params, 2, 1));
     }
 
-    // let now = Instant::now();
-    multiply_reg_by_db(
+    let stamp = Instant::now();
+    multiply_reg_by_sparsedb(
         &mut intermediate,
         db,
         v_reg_reoriented.as_slice(),
@@ -70,22 +72,21 @@ pub fn process_query(
         num_per,
         inst_trials,
     );
-    // println!("mul took {} us", now.elapsed().as_micros());
+    println!("mul:  {} us", stamp.elapsed().as_micros());
 
-    // let now = Instant::now();
-
-    // for i in 0..inst_trials {
+    let stamp = Instant::now();
     let v_cts: Vec<_> = intermediate
-        .chunks(num_per)
+        .par_chunks(num_per)
         .map(|chunk| {
             let mut intermediate_raw: Vec<PolyMatrixRaw> =
-                chunk.iter().map(|item| item.raw()).collect();
+                chunk.par_iter().map(|item| item.raw()).collect();
             fold_ciphertexts(params, &mut intermediate_raw, &v_folding, &v_folding_neg);
             intermediate_raw[0].clone()
         })
         .collect();
-    // println!("fold took {} us", now.elapsed().as_micros());
+    println!("fold: {} us", stamp.elapsed().as_micros());
 
+    let stamp = Instant::now();
     let v_packed_ct = v_cts
         .par_chunks_exact(trials)
         .map(|chunk: &[PolyMatrixRaw]| {
@@ -93,6 +94,7 @@ pub fn process_query(
             packed_ct.raw()
         })
         .collect();
+    println!("pack: {} us", stamp.elapsed().as_micros());
 
     encode(params, &v_packed_ct)
 }
@@ -174,7 +176,7 @@ mod test {
         let query = client.generate_query(target_idx);
 
         let mut stamp = Instant::now();
-        let dummy_items = 10000; //params.num_items();
+        let dummy_items = params.num_items();
         let (corr_db_item, db) =
             generate_fake_sparse_db_and_get_item(params, target_idx, dummy_items);
         println!(

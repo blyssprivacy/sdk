@@ -12,125 +12,75 @@ use rayon::prelude::{IndexedParallelIterator, IntoParallelRefMutIterator, Parall
 pub const MAX_SUMMED: usize = 1 << 6;
 pub const PACKED_OFFSET_2: i32 = 32;
 
-#[cfg(target_feature = "avx2")]
-pub fn multiply_reg_by_sparse_database(
-    out: &mut Vec<PolyMatrixNTT>,
-    db: &SparseDb,
-    query: &[u64],
+fn reduce_poly_4(params: &Params, out_slice: &mut PolyMatrixNTT, z: usize, poly_len: usize) {
+    for z_in in 0..4 {
+        out_slice.data[z + z_in] = barrett_coeff_u64(params, out_slice.data[z + z_in], 0);
+        out_slice.data[poly_len + z + z_in] =
+            barrett_coeff_u64(params, out_slice.data[poly_len + z + z_in], 1);
+        out_slice.data[2 * poly_len + z + z_in] =
+            barrett_coeff_u64(params, out_slice.data[2 * poly_len + z + z_in], 0);
+        out_slice.data[3 * poly_len + z + z_in] =
+            barrett_coeff_u64(params, out_slice.data[3 * poly_len + z + z_in], 1);
+    }
+}
+
+unsafe fn compute_single_out_poly(
     params: &Params,
-    dim0: usize,
-    num_per: usize,
-    db_idx: usize,
+    query: &[u64],
+    db_row: &[u64],
+    j: usize,
+    it: usize,
+    out_slice: &mut PolyMatrixNTT,
+    reduce: bool,
 ) {
-    //    db:  [inst_trials, num_per, dim0, poly_len]
-    // query:  [dim0, ct_rows, poly_len]
+    let poly_len = params.poly_len;
 
-    //   out:  [num_per, crt_count, poly_len]
+    let b_poly = db_row.get_unchecked(it * poly_len) as *const u64;
+    for z in (0..poly_len).step_by(4) {
+        let v_a1 = query.get_unchecked((j * 2) * poly_len + z) as *const u64;
+        let v_a2 = query.get_unchecked((j * 2 + 1) * poly_len + z) as *const u64;
+        let v_b = b_poly.add(z);
 
-    //    db:  [poly_len,              num_per, dim0]
-    // query:  [poly_len,                       dim0, ct_rows]
+        let a1 = _mm256_load_si256(v_a1 as *const __m256i);
+        let a2 = _mm256_load_si256(v_a2 as *const __m256i);
+        let b = _mm256_load_si256(v_b as *const __m256i);
 
-    panic!("Not implemented");
+        let a1_lo = a1;
+        let a1_hi = _mm256_srli_epi64(a1, PACKED_OFFSET_2);
+        let a2_lo = a2;
+        let a2_hi = _mm256_srli_epi64(a2, PACKED_OFFSET_2);
+        let b_lo = b;
+        let b_hi = _mm256_srli_epi64(b, PACKED_OFFSET_2);
 
-    // let poly_len = params.poly_len;
-    // let crt_count = params.crt_count;
-    // assert_eq!(crt_count, 2);
+        let c1_lo_loc = ((&mut out_slice.data[z]) as *mut u64) as *mut __m256i;
+        let c1_hi_loc = ((&mut out_slice.data[poly_len + z]) as *mut u64) as *mut __m256i;
+        let c2_lo_loc = ((&mut out_slice.data[2 * poly_len + z]) as *mut u64) as *mut __m256i;
+        let c2_hi_loc = ((&mut out_slice.data[3 * poly_len + z]) as *mut u64) as *mut __m256i;
 
-    // let mut adds = 0;
+        let mut c1_lo = _mm256_load_si256(c1_lo_loc);
+        let mut c1_hi = _mm256_load_si256(c1_hi_loc);
+        let mut c2_lo = _mm256_load_si256(c2_lo_loc);
+        let mut c2_hi = _mm256_load_si256(c2_hi_loc);
 
-    // unsafe {
-    //     for j in 0..dim0 {
-    //         for i in 0..num_per {
-    //             let full_idx = db_idx * (dim0 * num_per) + j * num_per + i;
+        c1_lo = _mm256_add_epi64(c1_lo, _mm256_mul_epu32(a1_lo, b_lo));
+        c1_hi = _mm256_add_epi64(c1_hi, _mm256_mul_epu32(a1_hi, b_hi));
+        c2_lo = _mm256_add_epi64(c2_lo, _mm256_mul_epu32(a2_lo, b_lo));
+        c2_hi = _mm256_add_epi64(c2_hi, _mm256_mul_epu32(a2_hi, b_hi));
 
-    //             let b_poly = db.get_item(full_idx);
-    //             if b_poly.is_none() {
-    //                 continue;
-    //             }
-    //             let b_poly = b_poly.unwrap();
+        _mm256_store_si256(c1_lo_loc, c1_lo);
+        _mm256_store_si256(c1_hi_loc, c1_hi);
+        _mm256_store_si256(c2_lo_loc, c2_lo);
+        _mm256_store_si256(c2_hi_loc, c2_hi);
 
-    //             for z in (0..poly_len).step_by(4) {
-    //                 let v_a1 = query.get_unchecked((j * 2) * poly_len + z) as *const u64;
-    //                 let v_a2 = query.get_unchecked((j * 2 + 1) * poly_len + z) as *const u64;
-    //                 let v_b = b_poly.get_unchecked(z) as *const u64;
-
-    //                 let a1 = _mm256_load_si256(v_a1 as *const __m256i);
-    //                 let a2 = _mm256_load_si256(v_a2 as *const __m256i);
-    //                 let b = _mm256_load_si256(v_b as *const __m256i);
-
-    //                 let a1_lo = a1;
-    //                 let a1_hi = _mm256_srli_epi64(a1, PACKED_OFFSET_2);
-    //                 let a2_lo = a2;
-    //                 let a2_hi = _mm256_srli_epi64(a2, PACKED_OFFSET_2);
-    //                 let b_lo = b;
-    //                 let b_hi = _mm256_srli_epi64(b, PACKED_OFFSET_2);
-
-    //                 let c1_lo_loc = ((&mut out[i].data[z]) as *mut u64) as *mut __m256i;
-    //                 let c1_hi_loc = ((&mut out[i].data[poly_len + z]) as *mut u64) as *mut __m256i;
-    //                 let c2_lo_loc =
-    //                     ((&mut out[i].data[2 * poly_len + z]) as *mut u64) as *mut __m256i;
-    //                 let c2_hi_loc =
-    //                     ((&mut out[i].data[3 * poly_len + z]) as *mut u64) as *mut __m256i;
-
-    //                 let mut c1_lo = _mm256_load_si256(c1_lo_loc);
-    //                 let mut c1_hi = _mm256_load_si256(c1_hi_loc);
-    //                 let mut c2_lo = _mm256_load_si256(c2_lo_loc);
-    //                 let mut c2_hi = _mm256_load_si256(c2_hi_loc);
-
-    //                 c1_lo = _mm256_add_epi64(c1_lo, _mm256_mul_epu32(a1_lo, b_lo));
-    //                 c1_hi = _mm256_add_epi64(c1_hi, _mm256_mul_epu32(a1_hi, b_hi));
-    //                 c2_lo = _mm256_add_epi64(c2_lo, _mm256_mul_epu32(a2_lo, b_lo));
-    //                 c2_hi = _mm256_add_epi64(c2_hi, _mm256_mul_epu32(a2_hi, b_hi));
-
-    //                 _mm256_store_si256(c1_lo_loc, c1_lo);
-    //                 _mm256_store_si256(c1_hi_loc, c1_hi);
-    //                 _mm256_store_si256(c2_lo_loc, c2_lo);
-    //                 _mm256_store_si256(c2_hi_loc, c2_hi);
-
-    //                 if adds >= MAX_SUMMED {
-    //                     for z_in in 0..4 {
-    //                         out[i].data[z + z_in] =
-    //                             barrett_coeff_u64(params, out[i].data[z + z_in], 0);
-    //                         out[i].data[poly_len + z + z_in] =
-    //                             barrett_coeff_u64(params, out[i].data[poly_len + z + z_in], 1);
-    //                         out[i].data[2 * poly_len + z + z_in] =
-    //                             barrett_coeff_u64(params, out[i].data[2 * poly_len + z + z_in], 0);
-    //                         out[i].data[3 * poly_len + z + z_in] =
-    //                             barrett_coeff_u64(params, out[i].data[3 * poly_len + z + z_in], 1);
-    //                     }
-    //                     // *c1_lo_loc = barrett_coeff_u64(params, *c1_lo_loc, 0);
-    //                     // *c1_hi_loc = barrett_coeff_u64(params, *c1_hi_loc, 0);
-    //                     // *c2_lo_loc = barrett_coeff_u64(params, *c2_lo_loc, 1);
-    //                     // *c2_hi_loc = barrett_coeff_u64(params, *c2_hi_loc, 1);
-    //                 }
-    //             }
-    //         }
-    //         adds += 1;
-    //         if adds >= MAX_SUMMED {
-    //             adds = 0;
-    //         }
-    //     }
-
-    //     for i in 0..num_per {
-    //         for z in (0..poly_len).step_by(4) {
-    //             for z_in in 0..4 {
-    //                 out[i].data[z + z_in] = barrett_coeff_u64(params, out[i].data[z + z_in], 0);
-    //                 out[i].data[poly_len + z + z_in] =
-    //                     barrett_coeff_u64(params, out[i].data[poly_len + z + z_in], 1);
-    //                 out[i].data[2 * poly_len + z + z_in] =
-    //                     barrett_coeff_u64(params, out[i].data[2 * poly_len + z + z_in], 0);
-    //                 out[i].data[3 * poly_len + z + z_in] =
-    //                     barrett_coeff_u64(params, out[i].data[3 * poly_len + z + z_in], 1);
-    //             }
-    //         }
-    //     }
-    // }
+        if reduce {
+            reduce_poly_4(params, out_slice, z, poly_len);
+        }
+    }
 }
 
 #[cfg(target_feature = "avx2")]
-pub fn multiply_reg_by_db(
+pub fn multiply_reg_by_sparsedb(
     out: &mut Vec<PolyMatrixNTT>,
-    // [inst_trials, num_per, PMNTT]
     sparse_db: &SparseDb,
     query: &[u64],
     params: &Params,
@@ -139,7 +89,6 @@ pub fn multiply_reg_by_db(
     inst_trials: usize,
 ) {
     //    db:  (num_per, dim0) -> (inst_trials, poly_len)
-
     // query:  [dim0, ct_rows, poly_len]
     //   out:  [inst_trials, num_per, PolyMatrixNTT]
 
@@ -149,107 +98,35 @@ pub fn multiply_reg_by_db(
 
     let mut adds = 0;
 
-    unsafe {
-        for j in 0..dim0 {
-            for i in 0..num_per {
-                let full_idx = j * num_per + i;
-                let db_row_mmap = sparse_db.get_item(full_idx);
-                if db_row_mmap.is_none() {
-                    continue;
-                }
-                let db_row_mmap = db_row_mmap.unwrap();
-                let db_row = SparseDb::mmap_to_slice(&db_row_mmap);
-
-                out.par_iter_mut()
-                    .skip(i)
-                    .step_by(num_per)
-                    .enumerate()
-                    .for_each(|(it, out_slice)| {
-                        let b_poly = db_row.get_unchecked(it * poly_len) as *const u64;
-                        for z in (0..poly_len).step_by(4) {
-                            let v_a1 = query.get_unchecked((j * 2) * poly_len + z) as *const u64;
-                            let v_a2 =
-                                query.get_unchecked((j * 2 + 1) * poly_len + z) as *const u64;
-                            let v_b = b_poly.add(z);
-
-                            let a1 = _mm256_load_si256(v_a1 as *const __m256i);
-                            let a2 = _mm256_load_si256(v_a2 as *const __m256i);
-                            let b = _mm256_load_si256(v_b as *const __m256i);
-
-                            let a1_lo = a1;
-                            let a1_hi = _mm256_srli_epi64(a1, PACKED_OFFSET_2);
-                            let a2_lo = a2;
-                            let a2_hi = _mm256_srli_epi64(a2, PACKED_OFFSET_2);
-                            let b_lo = b;
-                            let b_hi = _mm256_srli_epi64(b, PACKED_OFFSET_2);
-
-                            let c1_lo_loc = ((&mut out_slice.data[z]) as *mut u64) as *mut __m256i;
-                            let c1_hi_loc =
-                                ((&mut out_slice.data[poly_len + z]) as *mut u64) as *mut __m256i;
-                            let c2_lo_loc = ((&mut out_slice.data[2 * poly_len + z]) as *mut u64)
-                                as *mut __m256i;
-                            let c2_hi_loc = ((&mut out_slice.data[3 * poly_len + z]) as *mut u64)
-                                as *mut __m256i;
-
-                            let mut c1_lo = _mm256_load_si256(c1_lo_loc);
-                            let mut c1_hi = _mm256_load_si256(c1_hi_loc);
-                            let mut c2_lo = _mm256_load_si256(c2_lo_loc);
-                            let mut c2_hi = _mm256_load_si256(c2_hi_loc);
-
-                            c1_lo = _mm256_add_epi64(c1_lo, _mm256_mul_epu32(a1_lo, b_lo));
-                            c1_hi = _mm256_add_epi64(c1_hi, _mm256_mul_epu32(a1_hi, b_hi));
-                            c2_lo = _mm256_add_epi64(c2_lo, _mm256_mul_epu32(a2_lo, b_lo));
-                            c2_hi = _mm256_add_epi64(c2_hi, _mm256_mul_epu32(a2_hi, b_hi));
-
-                            _mm256_store_si256(c1_lo_loc, c1_lo);
-                            _mm256_store_si256(c1_hi_loc, c1_hi);
-                            _mm256_store_si256(c2_lo_loc, c2_lo);
-                            _mm256_store_si256(c2_hi_loc, c2_hi);
-
-                            if adds >= MAX_SUMMED {
-                                for z_in in 0..4 {
-                                    out_slice.data[z + z_in] =
-                                        barrett_coeff_u64(params, out_slice.data[z + z_in], 0);
-                                    out_slice.data[poly_len + z + z_in] = barrett_coeff_u64(
-                                        params,
-                                        out_slice.data[poly_len + z + z_in],
-                                        1,
-                                    );
-                                    out_slice.data[2 * poly_len + z + z_in] = barrett_coeff_u64(
-                                        params,
-                                        out_slice.data[2 * poly_len + z + z_in],
-                                        0,
-                                    );
-                                    out_slice.data[3 * poly_len + z + z_in] = barrett_coeff_u64(
-                                        params,
-                                        out_slice.data[3 * poly_len + z + z_in],
-                                        1,
-                                    );
-                                }
-                            }
-                        }
-                    });
+    for j in 0..dim0 {
+        for i in 0..num_per {
+            let full_idx = j * num_per + i;
+            let db_row_mmap = sparse_db.get_item(full_idx);
+            if db_row_mmap.is_none() {
+                continue;
             }
-            adds += 1;
-            if adds >= MAX_SUMMED {
-                adds = 0;
-            }
+            let db_row_mmap = db_row_mmap.unwrap();
+            let db_row = SparseDb::mmap_to_slice(&db_row_mmap);
+
+            let reduce = adds >= MAX_SUMMED;
+            out.par_iter_mut()
+                .skip(i)
+                .step_by(num_per)
+                .enumerate()
+                .for_each(|(it, out_slice)| unsafe {
+                    compute_single_out_poly(params, query, db_row, j, it, out_slice, reduce);
+                });
         }
+        adds += 1;
+        if adds >= MAX_SUMMED {
+            adds = 0;
+        }
+    }
 
-        for i in 0..(num_per * inst_trials) {
-            let out_slice = &mut out[i];
-            for z in (0..poly_len).step_by(4) {
-                for z_in in 0..4 {
-                    out_slice.data[z + z_in] =
-                        barrett_coeff_u64(params, out_slice.data[z + z_in], 0);
-                    out_slice.data[poly_len + z + z_in] =
-                        barrett_coeff_u64(params, out_slice.data[poly_len + z + z_in], 1);
-                    out_slice.data[2 * poly_len + z + z_in] =
-                        barrett_coeff_u64(params, out_slice.data[2 * poly_len + z + z_in], 0);
-                    out_slice.data[3 * poly_len + z + z_in] =
-                        barrett_coeff_u64(params, out_slice.data[3 * poly_len + z + z_in], 1);
-                }
-            }
+    for i in 0..(num_per * inst_trials) {
+        let out_slice = &mut out[i];
+        for z in (0..poly_len).step_by(4) {
+            reduce_poly_4(params, out_slice, z, poly_len);
         }
     }
 }
@@ -416,12 +293,9 @@ mod test {
     use super::*;
     use rand::{Rng, SeedableRng};
     use rand_chacha::ChaCha20Rng;
-    use spiral_rs::client::*;
     use spiral_rs::util;
 
-    use crate::compute::query_expansion::*;
     use crate::db::aligned_memory::*;
-    use crate::db::loading::*;
 
     fn get_params() -> Params {
         let cfg = r#"
@@ -463,7 +337,7 @@ mod test {
 
         let inst_trials = params.instances * params.n * params.n;
         let db_row_size = params.poly_len * inst_trials * std::mem::size_of::<u64>();
-        let mut db = SparseDb::new(None, db_row_size);
+        let db = SparseDb::new(None, db_row_size);
         let total_idx_sz = params.instances * params.n * params.n * dim0 * num_per;
         println!("total_idx_sz: {}", total_idx_sz);
         let mut data = vec![0u64; params.poly_len];
@@ -495,100 +369,15 @@ mod test {
         );
 
         let start = Instant::now();
-        multiply_reg_by_sparse_database(
+        multiply_reg_by_sparsedb(
             &mut out,
             &db,
             v_reg_reoriented.as_slice(),
             &params,
             dim0,
             num_per,
-            0,
+            inst_trials,
         );
         println!("Mul took {} us", start.elapsed().as_micros())
-    }
-
-    #[test]
-    fn multiply_reg_by_sparse_database_is_correct() {
-        let cfg = r#"
-            {'n': 4,
-            'nu_1': 9,
-            'nu_2': 5,
-            'p': 256,
-            'q2_bits': 20,
-            't_gsw': 9,
-            't_conv': 4,
-            't_exp_left': 8,
-            't_exp_right': 28,
-            'instances': 1,
-            'db_item_size': 32768 }
-        "#;
-        let params = util::params_from_json(&cfg.replace("'", "\""));
-
-        let mut seeded_rng = util::get_seeded_rng();
-        let mut rng = ChaCha20Rng::from_entropy();
-        let mut rng_pub = ChaCha20Rng::from_entropy();
-
-        let dim0 = 1 << params.db_dim_1;
-        let num_per = 1 << params.db_dim_2;
-        let scale_k = params.modulus / params.pt_modulus;
-
-        let target_idx = seeded_rng.gen::<usize>() % (dim0 * num_per);
-        let target_idx_dim0 = target_idx / num_per;
-        let target_idx_num_per = target_idx % num_per;
-
-        println!("target_idx: {}", target_idx);
-
-        let mut client = Client::init(&params);
-        _ = client.generate_keys();
-
-        let (corr_item, db) = generate_fake_sparse_db_and_get_item(&params, target_idx, 16384);
-
-        let mut v_reg = Vec::new();
-        for i in 0..dim0 {
-            let val = if i == target_idx_dim0 { scale_k } else { 0 };
-            let sigma = PolyMatrixRaw::single_value(&params, val).ntt();
-            v_reg.push(client.encrypt_matrix_reg(&sigma, &mut rng, &mut rng_pub));
-        }
-
-        let v_reg_sz = dim0 * 2 * params.poly_len;
-        let mut v_reg_reoriented = AlignedMemory64::new(v_reg_sz);
-        reorient_reg_ciphertexts(&params, v_reg_reoriented.as_mut_slice(), &v_reg);
-
-        let mut dec_result = PolyMatrixRaw::zero(&params, params.n, params.n);
-
-        for trial in 0..params.n * params.n {
-            let mut out = Vec::with_capacity(num_per);
-            for _ in 0..dim0 {
-                out.push(PolyMatrixNTT::zero(&params, 2, 1));
-            }
-            let start = Instant::now();
-            multiply_reg_by_sparse_database(
-                &mut out,
-                &db,
-                v_reg_reoriented.as_slice(),
-                &params,
-                dim0,
-                num_per,
-                trial,
-            );
-            println!("Mul took {} us", start.elapsed().as_micros());
-            let dec = client.decrypt_matrix_reg(&out[target_idx_num_per]).raw();
-            dec_result.copy_into(&dec, trial / params.n, trial % params.n);
-        }
-        // println!("dec_result {:?}", dec_result.data.as_slice().to_vec());
-
-        // decrypt
-
-        let mut dec_rescaled = PolyMatrixRaw::zero(&params, dec_result.rows, dec_result.cols);
-        assert_eq!(dec_rescaled.data.len(), 32768);
-        for z in 0..dec_rescaled.data.len() {
-            dec_rescaled.data[z] = rescale(dec_result.data[z], params.modulus, params.pt_modulus);
-        }
-
-        // println!("{:?}", dec_rescaled.data.as_slice().to_vec());
-        for z in 0..dec_rescaled.data.len() {
-            // println!("{:?} {:?}", dec_rescaled.data[z], corr_item.data[z]);
-            assert_eq!(dec_rescaled.data[z], corr_item.data[z]);
-        }
     }
 }

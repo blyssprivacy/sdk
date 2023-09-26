@@ -128,9 +128,14 @@ pub fn generate_fake_sparse_db_and_get_item<'a>(
         .map(|x| *x as u8)
         .collect();
 
-    let dummy_row_indices = (0..dummy_items)
-        .map(|_| rng.gen::<usize>() % params.num_items())
-        .collect::<Vec<_>>();
+    let dummy_row_indices = if dummy_items >= params.num_items() {
+        (0..params.num_items()).collect::<Vec<_>>()
+    } else {
+        // warn: collisions mean that the database will be sparser than expected
+        (0..dummy_items)
+            .map(|_| rng.gen::<usize>() % params.num_items())
+            .collect::<Vec<_>>()
+    };
 
     dummy_row_indices.par_iter().for_each(|&dest_idx| {
         let mut drng = thread_rng();
