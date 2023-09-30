@@ -101,12 +101,11 @@ pub fn multiply_reg_by_sparsedb(
     for j in 0..dim0 {
         for i in 0..num_per {
             let full_idx = j * num_per + i;
-            let db_row_mmap = sparse_db.get_item(full_idx);
-            if db_row_mmap.is_none() {
+            let db_row = sparse_db.get_item(full_idx);
+            if db_row.is_none() {
                 continue;
             }
-            let db_row_mmap = db_row_mmap.unwrap();
-            let db_row = SparseDb::mmap_to_slice(&db_row_mmap);
+            let db_row = db_row.unwrap();
 
             let reduce = adds >= MAX_SUMMED;
             out.par_iter_mut()

@@ -137,14 +137,19 @@ pub fn generate_fake_sparse_db_and_get_item<'a>(
             .collect::<Vec<_>>()
     };
 
-    dummy_row_indices.par_iter().for_each(|&dest_idx| {
-        let mut drng = thread_rng();
-        let mut update_req = vec![0u8; update_req_sz];
-        drng.fill_bytes(&mut update_req[4..]);
-        update_req[0..4].copy_from_slice(&(dest_idx as u32).to_be_bytes());
-        update_item(params, &update_req, &db).unwrap();
+    let pool = rayon::ThreadPoolBuilder::new()
+        .num_threads(32)
+        .build()
+        .unwrap();
+    pool.install(|| {
+        dummy_row_indices.par_iter().for_each(|&dest_idx| {
+            let mut drng = thread_rng();
+            let mut update_req = vec![0u8; update_req_sz];
+            drng.fill_bytes(&mut update_req[4..]);
+            update_req[0..4].copy_from_slice(&(dest_idx as u32).to_be_bytes());
+            update_item(params, &update_req, &db).unwrap();
+        });
     });
-
     // inject target item
     let mut update_req = vec![0u8; update_req_sz];
     (&mut update_req[4..]).copy_from_slice(&corr_bytes[..update_req_sz - 4]);

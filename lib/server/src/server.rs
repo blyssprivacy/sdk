@@ -72,7 +72,14 @@ pub fn process_query(
         num_per,
         inst_trials,
     );
-    println!("mul:  {} us", stamp.elapsed().as_micros());
+    let mul_time = stamp.elapsed().as_micros();
+    let mb_per_sec = db.current_size() as f64 / mul_time as f64;
+    println!(
+        "mul:  {} us ({:.0} MB @ {:.0} MB/s)",
+        mul_time,
+        db.current_size() as f64 / 1e6,
+        mb_per_sec
+    );
 
     let stamp = Instant::now();
     let v_cts: Vec<_> = intermediate
