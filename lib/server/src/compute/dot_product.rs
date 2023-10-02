@@ -92,13 +92,23 @@ pub fn multiply_reg_by_sparsedb(
     // query:  [dim0, ct_rows, poly_len]
     //   out:  [inst_trials, num_per, PolyMatrixNTT]
 
+    use std::time::Instant;
+
+    use rayon::prelude::IntoParallelIterator;
+
     let poly_len = params.poly_len;
     let crt_count = params.crt_count;
     assert_eq!(crt_count, 2);
 
     let mut adds = 0;
+    let mut prefetch_time = 0;
 
     for j in 0..dim0 {
+        let stamp = Instant::now();
+        (0..num_per).into_par_iter().for_each(|k| {
+            sparse_db.prefetch_item(j * num_per + k);
+        });
+        prefetch_time += stamp.elapsed().as_micros();
         for i in 0..num_per {
             let full_idx = j * num_per + i;
             let db_row = sparse_db.get_item(full_idx);
@@ -128,6 +138,8 @@ pub fn multiply_reg_by_sparsedb(
             reduce_poly_4(params, out_slice, z, poly_len);
         }
     }
+
+    println!("Prefetch time: {} us", prefetch_time);
 }
 
 #[cfg(not(target_feature = "avx2"))]

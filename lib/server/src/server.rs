@@ -192,15 +192,18 @@ mod test {
             stamp.elapsed().as_millis()
         );
 
-        stamp = Instant::now();
-        let response = process_query(params, &public_params, &query, &db);
-        println!(
-            "pub params: {} bytes ({} actual)",
-            params.setup_bytes(),
-            pp_sz
-        );
-        println!("processing took {} us", stamp.elapsed().as_micros());
-        println!("response: {} bytes", response.len());
+        let mut response: Vec<u8> = Vec::new();
+        for _ in 0..3 {
+            stamp = Instant::now();
+            response = process_query(params, &public_params, &query, &db);
+            println!(
+                "pub params: {} bytes ({} actual)",
+                params.setup_bytes(),
+                pp_sz
+            );
+            println!("processing took {} us", stamp.elapsed().as_micros());
+            println!("response: {} bytes", response.len());
+        }
 
         let result = client.decode_response(response.as_slice());
 

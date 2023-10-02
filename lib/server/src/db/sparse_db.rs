@@ -50,8 +50,15 @@ impl SparseDb {
         file
     }
 
-    fn prefetch_item(&self, idx: usize) {
-        // TODO: implement using madvise
+    pub fn prefetch_item(&self, id: usize) {
+        let (found, pos) = self.index_of_item(id);
+        if !found {
+            return;
+        }
+
+        let mmap = &self.active_item_ids.borrow()[pos].1;
+        let _ = mmap.advise(Advice::Sequential);
+        let _ = mmap.advise(Advice::WillNeed);
     }
 
     fn index_of_item(&self, idx: usize) -> (bool, usize) {
@@ -76,18 +83,6 @@ impl SparseDb {
         }
     }
 
-    fn index_of_next(&self, pos: usize) -> Option<usize> {
-        // find next nonsparse item id
-        let ids = self.active_item_ids.borrow();
-        if pos < ids.len() - 1 {
-            let next = ids.get(pos + 1);
-            if let Some(next) = next {
-                return Some(next.0);
-            }
-        }
-        None
-    }
-
     pub fn current_size(&self) -> usize {
         let ids = self.active_item_ids.borrow();
         ids.len() * self.item_size
@@ -104,12 +99,6 @@ impl SparseDb {
         }
 
         let mmap = &self.active_item_ids.borrow()[pos].1;
-
-        // prefetch next item
-        let next_idx = self.index_of_next(pos);
-        if let Some(next_idx) = next_idx {
-            self.prefetch_item(next_idx);
-        }
 
         let bytes = mmap.as_ref();
         assert_eq!(
