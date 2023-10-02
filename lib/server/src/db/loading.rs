@@ -138,15 +138,35 @@ pub fn generate_fake_sparse_db_and_get_item<'a>(
             .collect::<Vec<_>>()
     };
 
-    dummy_row_indices.par_iter().for_each(|&dest_idx| {
-        let mut drng = rand::rngs::SmallRng::seed_from_u64(dest_idx as u64);
-        let mut update_req = vec![0u8; update_req_sz];
-        for byte in &mut update_req[4..] {
-            *byte = drng.gen();
-        }
-        update_req[0..4].copy_from_slice(&(dest_idx as u32).to_be_bytes());
-        update_item(params, &update_req, &db).unwrap();
-    });
+    let (total_rng_time, total_preprocess_time, total_upsert_time) = dummy_row_indices
+        .par_iter()
+        .map(|&dest_idx| {
+            let stamp = Instant::now();
+            let mut drng = rand::rngs::SmallRng::seed_from_u64(dest_idx as u64);
+            let mut update_req = vec![0u8; update_req_sz];
+            for byte in &mut update_req[4..] {
+                *byte = drng.gen();
+            }
+            let rng_time = stamp.elapsed().as_micros() as u64;
+
+            let stamp = Instant::now();
+            let row_data = preprocess_item(params, &update_req[4..]);
+            let preprocess_time = stamp.elapsed().as_micros() as u64;
+
+            let stamp = Instant::now();
+            db.upsert(dest_idx, &row_data);
+            let upsert_time = stamp.elapsed().as_micros() as u64;
+
+            (rng_time, preprocess_time, upsert_time)
+        })
+        .reduce(|| (0, 0, 0), |a, b| (a.0 + b.0, a.1 + b.1, a.2 + b.2));
+
+    println!(
+        "RNG: {} ms\nPreprocess: {} ms\nUpsert: {} ms",
+        total_rng_time / 1000,
+        total_preprocess_time / 1000,
+        total_upsert_time / 1000
+    );
     // inject target item
     let mut update_req = vec![0u8; update_req_sz];
     (&mut update_req[4..]).copy_from_slice(&corr_bytes[..update_req_sz - 4]);
@@ -324,12 +344,7 @@ pub fn update_item(params: &Params, body: &[u8], db: &SparseDb) -> Result<u64, E
     update_item_raw(params, db_idx, &body[4..], db)
 }
 
-pub fn update_item_raw(
-    params: &Params,
-    db_idx: usize,
-    data: &[u8],
-    db: &SparseDb,
-) -> Result<u64, Error> {
+pub fn preprocess_item(params: &Params, data: &[u8]) -> Vec<u64> {
     let instances = params.instances;
     let trials = params.n * params.n;
     let pt_data_len = params.bytes_per_chunk();
@@ -340,6 +355,24 @@ pub fn update_item_raw(
 
     assert_eq!(inp.len() % pt_data_len, 0);
 
+    let results: Vec<_> = inp
+        .par_chunks_exact(pt_data_len)
+        .map(|pt_data| {
+            let ntt = convert_pt_to_poly(params, pt_data);
+            pack_ntt_poly(&ntt)
+        })
+        .collect();
+
+    let concatenated_results: Vec<u64> = results.iter().flat_map(|result| result.clone()).collect();
+    concatenated_results
+}
+
+pub fn update_item_raw(
+    params: &Params,
+    db_idx: usize,
+    data: &[u8],
+    db: &SparseDb,
+) -> Result<u64, Error> {
     if db_idx >= params.num_items() {
         println!(
             "bad db idx {} (expected less than {})",
@@ -349,18 +382,9 @@ pub fn update_item_raw(
         return Err(Error::Unknown);
     }
 
-    // set item to bytes
     let now = Instant::now();
-    let results: Vec<_> = inp
-        .par_chunks_exact(pt_data_len)
-        .map(|pt_data| {
-            let ntt = convert_pt_to_poly(params, pt_data);
-            pack_ntt_poly(&ntt)
-        })
-        .collect();
+    let concatenated_results = preprocess_item(params, data);
     let upsert_time = now.elapsed().as_micros();
-
-    let concatenated_results: Vec<u64> = results.iter().flat_map(|result| result.clone()).collect();
 
     db.upsert(db_idx, &concatenated_results);
 

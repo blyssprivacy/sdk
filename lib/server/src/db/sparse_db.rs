@@ -1,21 +1,22 @@
 use std::{
-    cell::RefCell,
     fs::{File, OpenOptions},
+    io::Write,
+    sync::RwLock,
 };
 
-use memmapix::{Advice, Mmap, MmapMut, MmapOptions};
+use memmapix::{Advice, Mmap, MmapOptions};
 
 pub struct SparseDb {
     path: String,
     item_size: usize,
     // indices of nonsparse rows, sorted.
     // Wrapped in refcell to allow for interior mutability.
-    active_item_ids: RefCell<Vec<(usize, Mmap)>>,
+    active_item_ids: RwLock<Vec<(usize, Mmap)>>,
     // Methods that modify active_item_ids must acquire this lock.
     // Once modification of the Vec is done, the lock can be dropped, so the actual disk IO is parallel.
     // Callers must never make simultaneous modifications to the same row (they would race in the filesystem)
     // TODO: use RwLock instead of Mutex ?
-    writer_lock: std::sync::Arc<std::sync::Mutex<()>>,
+    // writer_lock: std::sync::Arc<std::sync::Mutex<()>>,
 }
 impl SparseDb {
     pub fn new(path: Option<String>, item_size: usize) -> Self {
@@ -23,8 +24,7 @@ impl SparseDb {
             // if path is None, use "/tmp/sparsedb"
             path: path.unwrap_or_else(|| String::from("/scratch/sparsedb")),
             item_size,
-            active_item_ids: RefCell::new(Vec::new()),
-            writer_lock: std::sync::Arc::new(std::sync::Mutex::new(())),
+            active_item_ids: RwLock::new(Vec::new()),
         }
     }
 
@@ -51,32 +51,32 @@ impl SparseDb {
     }
 
     pub fn prefetch_item(&self, id: usize) {
-        let (found, pos) = self.index_of_item(id);
+        let item_ids = self.active_item_ids.read().unwrap();
+
+        let (found, pos) = SparseDb::index_of_item(&item_ids, id);
         if !found {
             return;
         }
 
-        let mmap = &self.active_item_ids.borrow()[pos].1;
+        let mmap = &item_ids[pos].1;
         let _ = mmap.advise(Advice::Sequential);
         let _ = mmap.advise(Advice::WillNeed);
     }
 
-    fn index_of_item(&self, idx: usize) -> (bool, usize) {
-        // binary search to find the index of idx in active_item_ids.
+    fn index_of_item<T>(map: &Vec<(usize, T)>, idx: usize) -> (bool, usize) {
+        // binary search to find the index of idx in a vec of key-value tuples.
         // if idx is not found, return the index where it should be inserted.
-        let item_ids = self.active_item_ids.borrow();
-
-        if item_ids.is_empty() {
+        if map.is_empty() {
             return (false, 0);
         }
 
-        let pp = item_ids.partition_point(|x| x.0 < idx);
+        let pp = map.partition_point(|x| x.0 < idx);
 
-        if pp == item_ids.len() {
+        if pp == map.len() {
             return (false, pp);
         }
 
-        if item_ids[pp].0 == idx {
+        if map[pp].0 == idx {
             (true, pp)
         } else {
             (false, pp)
@@ -84,21 +84,23 @@ impl SparseDb {
     }
 
     pub fn current_size(&self) -> usize {
-        let ids = self.active_item_ids.borrow();
-        ids.len() * self.item_size
+        let item_ids = self.active_item_ids.read().unwrap();
+        item_ids.len() * self.item_size
     }
 
     pub fn get_active_ids(&self) -> Vec<usize> {
-        self.active_item_ids.borrow().iter().map(|x| x.0).collect()
+        let item_ids = self.active_item_ids.read().unwrap();
+        item_ids.iter().map(|x| x.0).collect()
     }
 
     pub fn get_item(&self, idx: usize) -> Option<&[u64]> {
-        let (found, pos) = self.index_of_item(idx);
+        let item_ids = self.active_item_ids.read().unwrap();
+        let (found, pos) = SparseDb::index_of_item(&item_ids, idx);
         if !found {
             return None;
         }
 
-        let mmap = &self.active_item_ids.borrow()[pos].1;
+        let mmap = &item_ids[pos].1;
 
         let bytes = mmap.as_ref();
         assert_eq!(
@@ -120,46 +122,46 @@ impl SparseDb {
         }
     }
 
-    pub fn delete(&self, idx: usize) {
-        let writer_lock = self.writer_lock.clone();
-        let _lock = writer_lock.lock().unwrap();
-
-        let (found, pos) = self.index_of_item(idx);
+    fn invalidate_item(&self, idx: usize) {
+        // atomically remove item from active_item_ids
+        let mut item_ids = self.active_item_ids.write().unwrap();
+        let (found, pos) = SparseDb::index_of_item(&item_ids, idx);
         if !found {
             return;
         }
-        // modification to shared state done, races in filesytem are ok.
-        drop(_lock);
+        (*item_ids).remove(pos);
+    }
 
+    pub fn delete(&self, idx: usize) {
+        self.invalidate_item(idx);
+        // FS delete is unprotected by locks, races considered acceptable
         let file_path = self.idx_2_fpath(idx);
         std::fs::remove_file(file_path).ok();
-        self.active_item_ids.borrow_mut().remove(pos);
     }
 
     pub fn upsert(&self, idx: usize, data: &[u64]) {
-        let file = self.write_file(idx);
-        let mut mmap = unsafe { MmapMut::map_mut(&file).unwrap() };
+        // invalidate existing data to avoid torn writes
+        self.invalidate_item(idx);
 
-        let bytes = mmap.as_mut();
+        // race to write to filesystem
+        let mut file = File::create(self.idx_2_fpath(idx)).unwrap();
+        let byte_slice = unsafe {
+            std::slice::from_raw_parts(
+                data.as_ptr() as *const u8,
+                data.len() * std::mem::size_of::<u64>(),
+            )
+        };
+        file.write_all(byte_slice).unwrap();
+        file.sync_all().unwrap();
 
-        if bytes.len() >= data.len() * std::mem::size_of::<u64>() {
-            let u64_slice = unsafe {
-                std::slice::from_raw_parts_mut(bytes.as_mut_ptr() as *mut u64, data.len())
-            };
-            u64_slice.copy_from_slice(data);
-            mmap.flush().unwrap();
-        }
-
-        // after writing, preload the file as readonly
-        let file = self.read_file(idx);
-        let mmap = unsafe { MmapOptions::new().map(&file).unwrap() };
+        // after writing, remap the file
+        let ro_file = self.read_file(idx);
+        let mmap = unsafe { MmapOptions::new().map(&ro_file).unwrap() };
 
         // load read-only mmap into active_item_ids
-        let writer_lock = self.writer_lock.clone();
-        let _lock = writer_lock.lock().unwrap();
-        let (_, pos) = self.index_of_item(idx);
-        self.active_item_ids.borrow_mut().insert(pos, (idx, mmap));
-        // lock drops here
+        let mut item_ids = self.active_item_ids.write().unwrap();
+        let (_, pos) = SparseDb::index_of_item(&item_ids, idx);
+        (*item_ids).insert(pos, (idx, mmap));
     }
 }
 unsafe impl Send for SparseDb {}
