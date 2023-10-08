@@ -105,8 +105,9 @@ pub fn multiply_reg_by_sparsedb(
 
     for j in 0..dim0 {
         let stamp = Instant::now();
-        (0..num_per).into_par_iter().for_each(|k| {
-            sparse_db.prefetch_item(j * num_per + k);
+        (0..num_per).for_each(|k| {
+            let next_item = j * num_per + k;
+            sparse_db.prefetch_item(next_item);
         });
         prefetch_time += stamp.elapsed().as_micros();
         for i in 0..num_per {

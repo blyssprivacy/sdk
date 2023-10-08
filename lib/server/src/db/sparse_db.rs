@@ -1,7 +1,7 @@
 use std::{
     fs::{File, OpenOptions},
     io::Write,
-    sync::RwLock,
+    sync::{Arc, RwLock},
 };
 
 use memmapix::{Advice, Mmap, MmapOptions};
@@ -11,12 +11,13 @@ pub struct SparseDb {
     item_size: usize,
     // indices of nonsparse rows, sorted.
     // Wrapped in refcell to allow for interior mutability.
-    active_item_ids: RwLock<Vec<(usize, Mmap)>>,
+    active_item_ids: RwLock<Vec<(usize, Arc<Mmap>)>>,
     // Methods that modify active_item_ids must acquire this lock.
     // Once modification of the Vec is done, the lock can be dropped, so the actual disk IO is parallel.
     // Callers must never make simultaneous modifications to the same row (they would race in the filesystem)
     // TODO: use RwLock instead of Mutex ?
     // writer_lock: std::sync::Arc<std::sync::Mutex<()>>,
+    thread_pool: rayon::ThreadPool,
 }
 impl SparseDb {
     pub fn new(path: Option<String>, item_size: usize) -> Self {
@@ -25,6 +26,10 @@ impl SparseDb {
             path: path.unwrap_or_else(|| String::from("/scratch/sparsedb")),
             item_size,
             active_item_ids: RwLock::new(Vec::new()),
+            thread_pool: rayon::ThreadPoolBuilder::new()
+                .num_threads(8)
+                .build()
+                .unwrap(),
         }
     }
 
@@ -33,34 +38,23 @@ impl SparseDb {
         file_path
     }
 
-    fn read_file(&self, idx: usize) -> File {
-        let file_path = self.idx_2_fpath(idx);
-        File::open(file_path).unwrap()
-    }
-
-    fn write_file(&self, idx: usize) -> File {
-        let file_path = self.idx_2_fpath(idx);
-        let file = OpenOptions::new()
-            .read(true)
-            .write(true)
-            .create(true)
-            .open(&file_path)
-            .unwrap();
-        file.set_len(self.item_size as u64).unwrap();
-        file
+    // blocks until data is paged in
+    fn _prefetch(item: &Mmap) {
+        let _ = item.advise(Advice::Sequential);
+        let _ = item.advise(Advice::WillNeed);
     }
 
     pub fn prefetch_item(&self, id: usize) {
         let item_ids = self.active_item_ids.read().unwrap();
-
         let (found, pos) = SparseDb::index_of_item(&item_ids, id);
         if !found {
             return;
         }
+        let mmap = Arc::clone(&item_ids[pos].1);
 
-        let mmap = &item_ids[pos].1;
-        let _ = mmap.advise(Advice::Sequential);
-        let _ = mmap.advise(Advice::WillNeed);
+        self.thread_pool.spawn_fifo(move || {
+            SparseDb::_prefetch(&mmap);
+        });
     }
 
     fn index_of_item<T>(map: &Vec<(usize, T)>, idx: usize) -> (bool, usize) {
@@ -144,6 +138,7 @@ impl SparseDb {
         self.invalidate_item(idx);
 
         // race to write to filesystem
+        let file_path = self.idx_2_fpath(idx);
         let mut file = File::create(self.idx_2_fpath(idx)).unwrap();
         let byte_slice = unsafe {
             std::slice::from_raw_parts(
@@ -153,16 +148,74 @@ impl SparseDb {
         };
         file.write_all(byte_slice).unwrap();
         file.sync_all().unwrap();
+        drop(file);
 
         // after writing, remap the file
-        let ro_file = self.read_file(idx);
-        let mmap = unsafe { MmapOptions::new().map(&ro_file).unwrap() };
+        let ro_file = File::open(file_path).unwrap();
+        let mmap = Arc::new(unsafe { MmapOptions::new().map(&ro_file).unwrap() });
 
-        // load read-only mmap into active_item_ids
+        // acquire lock, then load new mmap into active_item_ids
         let mut item_ids = self.active_item_ids.write().unwrap();
         let (_, pos) = SparseDb::index_of_item(&item_ids, idx);
-        (*item_ids).insert(pos, (idx, mmap));
+        (*item_ids).insert(pos, (idx, Arc::clone(&mmap)));
     }
 }
 unsafe impl Send for SparseDb {}
 unsafe impl Sync for SparseDb {}
+
+#[cfg(test)]
+mod tests {
+    use rand::{Rng, SeedableRng};
+    use rayon::prelude::{IntoParallelIterator, ParallelIterator};
+
+    use super::*;
+    use std::time::Instant;
+
+    #[test]
+    fn benchmark_sparse_db() {
+        let n = 16000; // number of items
+        let item_size = 1024 * 1024; // 256KiB
+        let mut rng = rand::rngs::SmallRng::seed_from_u64(17 as u64);
+        let mut data = vec![0u64; item_size / std::mem::size_of::<u64>()];
+        for item in data.iter_mut() {
+            *item = rng.gen();
+        }
+
+        // Initialize SparseDb
+        let PATH: String = String::from("/scratch/sparsedb_bench");
+        let db = SparseDb::new(Some(PATH), item_size);
+
+        // Insert N items
+        let start = Instant::now();
+        (0..n).into_par_iter().for_each(|i| {
+            db.upsert(i, &data);
+        });
+        let duration = start.elapsed();
+        let write_bw = (n as f64 * item_size as f64) / (duration.as_secs_f64() * 1e6);
+        println!(
+            "Write: {} MiB/s ({} ms)",
+            write_bw as u64,
+            duration.as_millis()
+        );
+
+        // Sequentially read and measure bandwidth
+        let start = Instant::now();
+        // prefetch W items in advance
+        const W: usize = 8;
+        for i in 1..W {
+            db.prefetch_item(i);
+        }
+        for i in 0..n {
+            db.prefetch_item(i + W);
+            let b = db.get_item(i);
+            core::hint::black_box(b.unwrap()[0]);
+        }
+        let duration = start.elapsed();
+        let read_bw = (n as f64 * item_size as f64) / (duration.as_secs_f64() * 1e6);
+        println!(
+            "Read: {} MiB/s ({} ms)",
+            read_bw as u64,
+            duration.as_millis()
+        );
+    }
+}
