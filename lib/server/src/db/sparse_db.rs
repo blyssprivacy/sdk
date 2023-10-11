@@ -42,6 +42,12 @@ impl SparseDb {
     fn _prefetch(item: &Mmap) {
         let _ = item.advise(Advice::Sequential);
         let _ = item.advise(Advice::WillNeed);
+
+        // prefault the pages (assume 4KiB pages)
+        for i in (0..item.len()).step_by(4096) {
+            let page_baseaddr = &item[i..i + 4];
+            core::hint::black_box(&page_baseaddr[0]);
+        }
     }
 
     pub fn prefetch_item(&self, id: usize) {
@@ -55,6 +61,16 @@ impl SparseDb {
         self.thread_pool.spawn_fifo(move || {
             SparseDb::_prefetch(&mmap);
         });
+    }
+
+    pub fn release_item(&self, id: usize) {
+        let item_ids = self.active_item_ids.read().unwrap();
+        let (found, pos) = SparseDb::index_of_item(&item_ids, id);
+        if !found {
+            return;
+        }
+        let mmap = Arc::clone(&item_ids[pos].1);
+        let _ = mmap.advise(Advice::DontNeed);
     }
 
     fn index_of_item<T>(map: &Vec<(usize, T)>, idx: usize) -> (bool, usize) {
@@ -173,8 +189,15 @@ mod tests {
 
     #[test]
     fn benchmark_sparse_db() {
-        let n = 16000; // number of items
+        let n = 8000; // number of items
         let item_size = 1024 * 1024; // 256KiB
+        println!(
+            "Benchmarking {} MiB SparseDb ({} items @ {} KiB each)",
+            n * item_size / 1024 / 1024,
+            n,
+            item_size / 1024
+        );
+
         let mut rng = rand::rngs::SmallRng::seed_from_u64(17 as u64);
         let mut data = vec![0u64; item_size / std::mem::size_of::<u64>()];
         for item in data.iter_mut() {
@@ -198,18 +221,34 @@ mod tests {
             duration.as_millis()
         );
 
+        // wait, counting down to stdout every second
+        const WAIT: usize = 1;
+        print!("Waiting {} seconds: ", WAIT);
+        std::io::stdout().flush().unwrap();
+        for _ in 0..WAIT {
+            std::thread::sleep(std::time::Duration::from_secs(1));
+            print!(".");
+            std::io::stdout().flush().unwrap();
+        }
+        println!("");
+
         // Sequentially read and measure bandwidth
         let start = Instant::now();
         // prefetch W items in advance
+        const PREFETCH_OFFSET: usize = 256;
         const W: usize = 8;
-        for i in 1..W {
+        for i in PREFETCH_OFFSET..(PREFETCH_OFFSET + W) {
             db.prefetch_item(i);
         }
+        let mut sum: u64 = 0;
         for i in 0..n {
-            db.prefetch_item(i + W);
-            let b = db.get_item(i);
-            core::hint::black_box(b.unwrap()[0]);
+            db.prefetch_item(PREFETCH_OFFSET + i + W);
+            let b = db.get_item(i).unwrap();
+            for value in b.iter() {
+                sum += *value;
+            }
         }
+        core::hint::black_box(sum);
         let duration = start.elapsed();
         let read_bw = (n as f64 * item_size as f64) / (duration.as_secs_f64() * 1e6);
         println!(

@@ -102,16 +102,18 @@ pub fn multiply_reg_by_sparsedb(
 
     let mut adds = 0;
     let mut prefetch_time = 0;
+    const PREFETCH_WINDOW: usize = 8;
+
+    let stamp = Instant::now();
+    (0..PREFETCH_WINDOW).for_each(|w| {
+        sparse_db.prefetch_item(w);
+    });
+    prefetch_time += stamp.elapsed().as_micros();
 
     for j in 0..dim0 {
-        let stamp = Instant::now();
-        (0..num_per).for_each(|k| {
-            let next_item = j * num_per + k;
-            sparse_db.prefetch_item(next_item);
-        });
-        prefetch_time += stamp.elapsed().as_micros();
         for i in 0..num_per {
             let full_idx = j * num_per + i;
+            sparse_db.prefetch_item(full_idx + PREFETCH_WINDOW);
             let db_row = sparse_db.get_item(full_idx);
             if db_row.is_none() {
                 continue;
@@ -126,6 +128,8 @@ pub fn multiply_reg_by_sparsedb(
                 .for_each(|(it, out_slice)| unsafe {
                     compute_single_out_poly(params, query, db_row, j, it, out_slice, reduce);
                 });
+
+            sparse_db.release_item(full_idx);
         }
         adds += 1;
         if adds >= MAX_SUMMED {
