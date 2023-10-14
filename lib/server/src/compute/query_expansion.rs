@@ -251,7 +251,7 @@ pub fn expand_query<'a>(
     params: &'a Params,
     public_params: &PublicParameters<'a>,
     query: &Query<'a>,
-    indices: Option<&Vec<usize>>,
+    indices: Option<&[usize]>,
 ) -> (AlignedMemory64, Vec<PolyMatrixNTT<'a>>) {
     let dim0 = 1 << params.db_dim_1;
     let further_dims = params.db_dim_2;

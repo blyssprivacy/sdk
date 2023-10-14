@@ -26,9 +26,8 @@ fn reduce_poly_4(params: &Params, out_slice: &mut PolyMatrixNTT, z: usize, poly_
 
 unsafe fn compute_single_out_poly(
     params: &Params,
-    query: &[u64],
+    query_slice: &[u64],
     db_row: &[u64],
-    j: usize,
     it: usize,
     out_slice: &mut PolyMatrixNTT,
     reduce: bool,
@@ -37,8 +36,8 @@ unsafe fn compute_single_out_poly(
 
     let b_poly = db_row.get_unchecked(it * poly_len) as *const u64;
     for z in (0..poly_len).step_by(4) {
-        let v_a1 = query.get_unchecked((j * 2) * poly_len + z) as *const u64;
-        let v_a2 = query.get_unchecked((j * 2 + 1) * poly_len + z) as *const u64;
+        let v_a1 = query_slice.get_unchecked(z) as *const u64;
+        let v_a2 = query_slice.get_unchecked(poly_len + z) as *const u64;
         let v_b = b_poly.add(z);
 
         let a1 = _mm256_load_si256(v_a1 as *const __m256i);
@@ -94,15 +93,13 @@ pub fn multiply_reg_by_sparsedb(
 
     use std::time::Instant;
 
-    use rayon::prelude::IntoParallelIterator;
-
     let poly_len = params.poly_len;
     let crt_count = params.crt_count;
     assert_eq!(crt_count, 2);
 
     let mut adds = 0;
     let mut prefetch_time = 0;
-    const PREFETCH_WINDOW: usize = 8;
+    const PREFETCH_WINDOW: usize = 32;
 
     let stamp = Instant::now();
     (0..PREFETCH_WINDOW).for_each(|w| {
@@ -111,24 +108,34 @@ pub fn multiply_reg_by_sparsedb(
     prefetch_time += stamp.elapsed().as_micros();
 
     for j in 0..dim0 {
+        let query_slice = &query[j * 2 * poly_len..(j * 2 + 2) * poly_len];
         for i in 0..num_per {
             let full_idx = j * num_per + i;
             sparse_db.prefetch_item(full_idx + PREFETCH_WINDOW);
-            let db_row = sparse_db.get_item(full_idx);
-            if db_row.is_none() {
-                continue;
+            {
+                let db_row = sparse_db.get_item(full_idx);
+                if db_row.is_none() {
+                    continue;
+                }
+                let db_row = db_row.unwrap();
+
+                let reduce = adds >= MAX_SUMMED;
+                out.par_iter_mut()
+                    .skip(i)
+                    .step_by(num_per)
+                    .enumerate()
+                    .for_each(|(it, out_slice)| unsafe {
+                        let db_row_u64 = db_row.1.as_ref().unwrap().as_slice();
+                        compute_single_out_poly(
+                            params,
+                            query_slice,
+                            db_row_u64,
+                            it,
+                            out_slice,
+                            reduce,
+                        );
+                    });
             }
-            let db_row = db_row.unwrap();
-
-            let reduce = adds >= MAX_SUMMED;
-            out.par_iter_mut()
-                .skip(i)
-                .step_by(num_per)
-                .enumerate()
-                .for_each(|(it, out_slice)| unsafe {
-                    compute_single_out_poly(params, query, db_row, j, it, out_slice, reduce);
-                });
-
             sparse_db.release_item(full_idx);
         }
         adds += 1;
@@ -353,7 +360,7 @@ mod test {
 
         let inst_trials = params.instances * params.n * params.n;
         let db_row_size = params.poly_len * inst_trials * std::mem::size_of::<u64>();
-        let db = SparseDb::new(None, db_row_size);
+        let db = SparseDb::new(None, db_row_size, params.num_items());
         let total_idx_sz = params.instances * params.n * params.n * dim0 * num_per;
         println!("total_idx_sz: {}", total_idx_sz);
         let mut data = vec![0u64; params.poly_len];

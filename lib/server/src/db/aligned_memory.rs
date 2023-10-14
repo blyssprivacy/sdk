@@ -1,5 +1,5 @@
 use std::{
-    alloc::{alloc_zeroed, dealloc, realloc, Layout},
+    alloc::{alloc, alloc_zeroed, dealloc, realloc, Layout},
     mem::size_of,
     ops::{Index, IndexMut},
     slice::{from_raw_parts, from_raw_parts_mut},
@@ -15,13 +15,17 @@ pub struct AlignedMemory<const ALIGN: usize> {
 }
 
 impl<const ALIGN: usize> AlignedMemory<{ ALIGN }> {
-    pub fn new(sz_u64: usize) -> Self {
+    fn _new(sz_u64: usize, zeroed: bool) -> Self {
         let sz_bytes = sz_u64 * size_of::<u64>();
         let layout = Layout::from_size_align(sz_bytes, ALIGN).unwrap();
 
         let ptr;
         unsafe {
-            ptr = alloc_zeroed(layout);
+            ptr = if zeroed {
+                alloc_zeroed(layout)
+            } else {
+                alloc(layout)
+            };
         }
 
         Self {
@@ -29,6 +33,14 @@ impl<const ALIGN: usize> AlignedMemory<{ ALIGN }> {
             sz_u64,
             layout,
         }
+    }
+
+    pub fn new(sz_u64: usize) -> Self {
+        Self::_new(sz_u64, true)
+    }
+
+    pub fn new_empty(sz_u64: usize) -> Self {
+        Self::_new(sz_u64, false)
     }
 
     pub fn extend(&mut self, new_size: usize) {
@@ -60,6 +72,14 @@ impl<const ALIGN: usize> AlignedMemory<{ ALIGN }> {
 
     pub unsafe fn as_mut_ptr(&mut self) -> *mut u64 {
         self.p
+    }
+
+    pub fn as_bytes(&self) -> &[u8] {
+        unsafe { from_raw_parts(self.p as *const u8, self.sz_u64 * size_of::<u64>()) }
+    }
+
+    pub fn as_mut_bytes(&mut self) -> &mut [u8] {
+        unsafe { from_raw_parts_mut(self.p as *mut u8, self.sz_u64 * size_of::<u64>()) }
     }
 
     pub fn len(&self) -> usize {
