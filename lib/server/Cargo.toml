@@ -37,6 +37,7 @@ sha2 = "0.10.6"
 bzip2 = "0.4.4"
 base64 = "0.21.0"
 memmapix = "0.7.6"
+crossbeam-utils = "0.8.16"
 
 [profile.release-with-debug]
 inherits = "release"

@@ -113,7 +113,7 @@ pub fn multiply_reg_by_sparsedb(
                     .step_by(num_per)
                     .enumerate()
                     .for_each(|(it, out_slice)| unsafe {
-                        let db_row_u64 = db_row.1.as_slice();
+                        let db_row_u64 = db_row.data.as_slice();
                         compute_single_out_poly(
                             params,
                             query_slice,

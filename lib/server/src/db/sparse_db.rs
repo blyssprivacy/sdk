@@ -3,6 +3,8 @@ use std::io::{Read, Write};
 use std::sync::RwLockReadGuard;
 use std::sync::{Arc, RwLock};
 
+use crossbeam_utils::CachePadded;
+
 use super::aligned_memory::AlignedMemory64;
 use super::sorted_vec::SortedVec;
 
@@ -12,9 +14,10 @@ pub unsafe fn bytes_to_u64(bytes: &[u8]) -> &[u64] {
         bytes.len() / std::mem::size_of::<u64>(),
     )
 }
-
-type CacheItem = (Option<usize>, AlignedMemory64);
-
+pub struct CacheItem {
+    id: Option<usize>,
+    pub data: AlignedMemory64,
+}
 pub struct SparseDb {
     paths: Vec<String>,
     item_size: usize,
@@ -22,7 +25,7 @@ pub struct SparseDb {
     active_item_ids: Arc<RwLock<SortedVec>>,
     // fixed size buffer of 64-byte aligned items, usize the current item held in the buffer or None if the buffer is free for use.
     // allocated once and overwritten frequently, to avoid repeated allocations.
-    item_cache: Arc<Vec<RwLock<CacheItem>>>,
+    item_cache: Arc<Vec<CachePadded<RwLock<CacheItem>>>>,
     thread_pool: rayon::ThreadPool,
     cache_misses: std::sync::atomic::AtomicUsize,
 }
@@ -34,19 +37,6 @@ impl SparseDb {
         num_items: usize,
         prefetch_window: Option<usize>,
     ) -> Self {
-        let prefetch_window = prefetch_window.unwrap_or(32);
-        let mut item_cache = Vec::with_capacity(prefetch_window);
-        for _ in 0..prefetch_window {
-            item_cache.push(RwLock::new((
-                None,
-                AlignedMemory64::new(item_size / std::mem::size_of::<u64>()),
-            )));
-        }
-        println!(
-            "Using {} MiB of memory for SparseDb item cache",
-            item_cache.len() * item_size / 1024 / 1024
-        );
-
         let uuid = uuid.unwrap_or_else(|| String::from("dev"));
         let dbpath = path.unwrap_or_else(|| String::from("/mnt/flashpir"));
         let dbroot = std::path::Path::new(&dbpath);
@@ -57,7 +47,9 @@ impl SparseDb {
             );
         }
 
-        // detect multple storage devices (represented as subdirectories of dbroot, following the form //dbroot/diskN)
+        // setup backing stores for SparseDb at dbroot
+        // subdirs of the form //dbroot/diskN will be treated as independent storage devices;
+        // SparseDb will distribute reads & writes in round-robin order over devices
         let mut paths = Vec::new();
         for entry in std::fs::read_dir(&dbroot).unwrap() {
             let entry = entry.unwrap();
@@ -81,9 +73,22 @@ impl SparseDb {
 
         println!("Using storage devices: {:?}", paths);
         assert!(paths.len() > 0);
-
-        // at least 8 threads, at most 4 threads per SSD, and at most PREFETCH_WINDOW threads total
         let n_ssds = paths.len();
+
+        // setup read scratchpad ("cache")
+        let prefetch_window = prefetch_window.unwrap_or(32);
+        let mut item_cache = Vec::with_capacity(prefetch_window);
+        for _ in 0..prefetch_window {
+            item_cache.push(CachePadded::new(RwLock::new(CacheItem {
+                id: None,
+                data: AlignedMemory64::new(item_size / std::mem::size_of::<u64>()),
+            })));
+        }
+        println!(
+            "Using {} MiB of memory for SparseDb item cache",
+            item_cache.len() * item_size / 1024 / 1024
+        );
+        // at least 8 threads, at most 4 threads per SSD, and at most PREFETCH_WINDOW threads total
         let n_prefetchers = std::cmp::max(std::cmp::min(4 * n_ssds, prefetch_window), 8);
 
         Self {
@@ -114,8 +119,8 @@ impl SparseDb {
     // blocking read into existing cache item
     fn _prefetch(file_path: String, id: usize, item: &mut CacheItem) {
         let mut f = File::open(file_path).unwrap();
-        f.read_exact(item.1.as_mut_bytes()).unwrap();
-        item.0 = Some(id);
+        f.read_exact(item.data.as_mut_bytes()).unwrap();
+        item.id = Some(id);
     }
 
     fn prefetch_item(&self, id: usize) {
@@ -176,7 +181,7 @@ impl SparseDb {
         // try serving from cache, without waiting for locks
         {
             if let Ok(item) = self.item_cache[cache_pos].try_read() {
-                if let Some(item_id) = item.0 {
+                if let Some(item_id) = item.id {
                     if item_id == id {
                         return Some(item);
                     }
@@ -192,7 +197,7 @@ impl SparseDb {
         // Wait for the lock to see if our data arrives.
         {
             let item = self.item_cache[cache_pos].read().unwrap();
-            if let Some(item_id) = item.0 {
+            if let Some(item_id) = item.id {
                 if item_id == id {
                     return Some(item);
                 }
@@ -251,7 +256,7 @@ impl SparseDb {
         };
         file.write_all(byte_slice).unwrap();
         // write_all returns when the new file is visible to other processes, but may not yet be fully commited to nonvolatile storage (i.e. can't survive power loss).
-        // sync_all absolutely ensures durability, but will limit write speed per disk to ~800MB/s.
+        // sync_all ensures durability, but will limit write speed per disk to ~800MB/s.
         // file.sync_all().unwrap();
 
         // add to valid set
@@ -341,7 +346,7 @@ mod tests {
                     continue;
                 }
                 let item = item.unwrap();
-                let b = item.1.as_slice();
+                let b = item.data.as_slice();
                 core::hint::black_box(b);
             }
         }
