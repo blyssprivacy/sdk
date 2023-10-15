@@ -1,10 +1,10 @@
-use std::collections::HashSet;
 use std::fs::File;
 use std::io::{Read, Write};
 use std::sync::RwLockReadGuard;
 use std::sync::{Arc, RwLock};
 
 use super::aligned_memory::AlignedMemory64;
+use super::sorted_vec::SortedVec;
 
 pub unsafe fn bytes_to_u64(bytes: &[u8]) -> &[u64] {
     std::slice::from_raw_parts(
@@ -13,15 +13,14 @@ pub unsafe fn bytes_to_u64(bytes: &[u8]) -> &[u64] {
     )
 }
 
-type Row = (bool, Option<AlignedMemory64>);
 type CacheItem = (Option<usize>, AlignedMemory64);
 
 const CHUNK_SIZE: usize = 256 * 1024; // 256 KiB
 pub struct SparseDb {
     path: String,
     item_size: usize,
-    // active_item_ids: Arc<Vec<RwLock<Row>>>,
-    active_rows: Arc<RwLock<HashSet<usize>>>,
+    // current, sorted set of non-sparse items
+    active_item_ids: Arc<RwLock<SortedVec>>,
     // fixed size buffer of 64-byte aligned items, usize the current item held in the buffer or None if the buffer is free for use.
     // allocated once and overwritten frequently, to avoid repeated allocations.
     item_cache: Arc<Vec<RwLock<CacheItem>>>,
@@ -35,13 +34,9 @@ impl SparseDb {
         num_items: usize,
         prefetch_window: Option<usize>,
     ) -> Self {
-        // let mut item_ids = Vec::with_capacity(num_items);
-        // for i in 0..num_items {
-        //     item_ids.push(RwLock::new((false, None)));
-        // }
         let prefetch_window = prefetch_window.unwrap_or(32);
         let mut item_cache = Vec::with_capacity(prefetch_window);
-        for i in 0..prefetch_window {
+        for _ in 0..prefetch_window {
             item_cache.push(RwLock::new((
                 None,
                 AlignedMemory64::new(item_size / std::mem::size_of::<u64>()),
@@ -56,16 +51,20 @@ impl SparseDb {
             );
         }
 
+        // at most 8 threads per SSD, and at most PREFETCH_WINDOW threads total
+        let n_ssds = 1;
+        let n_prefetchers = std::cmp::min(8 * n_ssds, prefetch_window);
+
         Self {
             // if path is None, use "/tmp/sparsedb"
             path: dbstore,
             item_size,
             // active_item_ids: Arc::new(item_ids),
-            active_rows: Arc::new(RwLock::new(HashSet::new())),
+            active_item_ids: Arc::new(RwLock::new(SortedVec::new())),
             item_cache: Arc::new(item_cache),
             // cache_freelist: Arc::new(RwLock::new(cache_freelist)),
             thread_pool: rayon::ThreadPoolBuilder::new()
-                .num_threads(8)
+                .num_threads(n_prefetchers)
                 .build()
                 .unwrap(),
             cache_misses: std::sync::atomic::AtomicUsize::new(0),
@@ -88,11 +87,11 @@ impl SparseDb {
         item.0 = Some(id);
     }
 
-    pub fn prefetch_item(&self, id: usize) {
-        // if id not in active_rows, return
+    fn prefetch_item(&self, id: usize) {
+        // if id is not active, return
         {
-            let active_rows = self.active_rows.read().unwrap();
-            if !active_rows.contains(&id) {
+            let active_item_ids = self.active_item_ids.read().unwrap();
+            if !active_item_ids.contains(id) {
                 return;
             }
         }
@@ -108,17 +107,37 @@ impl SparseDb {
         });
     }
 
-    pub fn get_active_ids(&self) -> Vec<usize> {
-        let set = self.active_rows.read().unwrap();
-        set.iter().cloned().collect()
+    pub fn prefill(&self) {
+        // fetch items from the beginning of the active set to fill the prefetch window, except for the first item
+        let n = self.item_cache.len();
+        let active_item_ids = self.active_item_ids.read().unwrap();
+        for i in 1..n - 1 {
+            let id = active_item_ids.as_vec()[i];
+            self.prefetch_item(id);
+        }
     }
 
-    pub fn get_item(&self, id: usize) -> Option<RwLockReadGuard<CacheItem>> {
+    pub fn get_active_ids(&self) -> Vec<usize> {
+        let set = self.active_item_ids.read().unwrap();
+        set.as_vec().clone()
+    }
+
+    fn _get(&self, id: usize, attempts: usize) -> Option<RwLockReadGuard<CacheItem>> {
         // check if id is active
         {
-            let active_rows = self.active_rows.read().unwrap();
-            if !active_rows.contains(&id) {
+            let active_item_ids = self.active_item_ids.read().unwrap();
+            if !active_item_ids.contains(id) {
                 return None;
+            }
+
+            // Start prefetching a new active item to fill the end of the prefetch window
+            // Fetching into the end of the window maximizes time to prefetch, and minimizes risk of evicting the item we're about to read
+            let ordered_idx_of_current_item = active_item_ids.index_of(id).unwrap();
+            let idx_to_prefetch = ordered_idx_of_current_item + self.item_cache.len() - 1;
+            let id_to_prefetch = active_item_ids.as_vec().get(idx_to_prefetch).cloned();
+
+            if let Some(id_to_prefetch) = id_to_prefetch {
+                self.prefetch_item(id_to_prefetch);
             }
         }
 
@@ -131,7 +150,7 @@ impl SparseDb {
             }
         }
 
-        // if missed, synchronously fetch the item into cache
+        // if missed, synchronously fill the item into cache
         self.cache_misses
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
@@ -142,29 +161,33 @@ impl SparseDb {
             SparseDb::_prefetch(file_path, id, item);
         }
 
-        // // acquire read lock on the newly written item, and return the guard to consumer
-        // let item = self.item_cache[cache_pos].read().unwrap();
-        // // if item was evicted, recurse and retry
-        // if item.0.is_none() || item.0.unwrap() != id {
-        //     drop(item);
-        //     println!("WARN: thrashing on item {}", id);
-        // }
-        // Some(item)
+        // retry serving the item from cache, up to a limit
+        if attempts > 3 {
+            panic!("FATAL: item {} exceeded retry limit for fill attempts", id);
+        }
 
-        // retry serving the item from cache
-        // todo: track thrashing?
-        self.get_item(id)
+        if attempts > 0 {
+            println!(
+                "WARNING: item {} was evicted immediately after fill. Retrying ({} attempts)",
+                id, attempts
+            );
+        }
+        self._get(id, attempts + 1)
+    }
+
+    pub fn get_item(&self, id: usize) -> Option<RwLockReadGuard<CacheItem>> {
+        self._get(id, 0)
     }
 
     pub fn delete(&self, idx: usize) {
         // remove from valid set
         {
-            let mut active_rows = self.active_rows.write().unwrap();
-            active_rows.remove(&idx);
+            let mut active_item_ids = self.active_item_ids.write().unwrap();
+            active_item_ids.remove(idx);
         }
-        // (no need to explicitly evict from cache, we'll just let it be overwritten)
+        // (no need to explicitly evict from cache, just let it be overwritten)
 
-        // delete from filesystem
+        // race to delete from filesystem
         let file_path = self.idx_2_fpath(idx, 0);
         std::fs::remove_file(file_path).ok();
     }
@@ -187,15 +210,18 @@ impl SparseDb {
 
         // add to valid set
         {
-            let mut active_rows = self.active_rows.write().unwrap();
-            active_rows.insert(idx);
+            let mut active_item_ids = self.active_item_ids.write().unwrap();
+            active_item_ids.insert(idx);
         }
     }
 
-    // benchmarking tools, not needed for correctness
+    // benchmarking tools
+    pub fn current_count(&self) -> usize {
+        self.active_item_ids.read().unwrap().as_vec().len()
+    }
+
     pub fn current_size(&self) -> usize {
-        let num_active_rows = self.active_rows.read().unwrap().len();
-        num_active_rows * self.item_size
+        self.current_count() * self.item_size
     }
 
     pub fn pop_cache_misses(&self) -> usize {
@@ -206,7 +232,7 @@ impl SparseDb {
 
 #[cfg(test)]
 mod tests {
-    use rand::{Rng, SeedableRng};
+    use rand::{seq::index::sample, Rng, SeedableRng};
     use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
     use super::*;
@@ -230,12 +256,16 @@ mod tests {
         }
 
         // Initialize SparseDb
-        const PREFETCH_WINDOW: usize = 32;
+        const PREFETCH_WINDOW: usize = 128;
         let db = SparseDb::new(None, item_size, n, Some(PREFETCH_WINDOW));
+
+        // let item_ids = (0..n).collect::<Vec<usize>>();
+        let item_ids = sample(&mut rng, n * 4, n).into_vec();
+        let n_range = *item_ids.iter().max().unwrap_or(&0);
 
         // Insert N items
         let start = Instant::now();
-        (0..n).into_par_iter().with_max_len(8).for_each(|i| {
+        item_ids.into_par_iter().with_max_len(8).for_each(|i| {
             db.upsert(i, &data);
         });
         let duration = start.elapsed();
@@ -256,20 +286,21 @@ mod tests {
 
         // Sequentially read and measure bandwidth
         let start = Instant::now();
-        for i in 0..PREFETCH_WINDOW - 1 {
-            db.prefetch_item(i);
-        }
+        db.prefill();
+
         let mut sum: u64 = 0;
-        for i in 0..n {
-            db.prefetch_item(i + PREFETCH_WINDOW - 1);
+        for i in 0..n_range {
             {
-                let item = db.get_item(i).unwrap();
+                let item = db.get_item(i);
+                if item.is_none() {
+                    continue;
+                }
+                let item = item.unwrap();
                 let b = item.1.as_slice();
                 for value in b.iter() {
                     sum += *value;
                 }
             }
-            // db.release_item(i);
         }
         core::hint::black_box(sum);
         let duration = start.elapsed();
@@ -279,5 +310,9 @@ mod tests {
             read_bw as u64,
             duration.as_millis()
         );
+
+        let misses = db.pop_cache_misses();
+        let miss_rate = misses as f64 / n as f64;
+        println!("Cache misses: {} ({:.2}%)", misses, miss_rate * 100.0);
     }
 }

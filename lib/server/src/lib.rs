@@ -11,6 +11,7 @@ pub mod compute {
 pub mod db {
     pub mod aligned_memory;
     pub mod loading;
+    pub mod sorted_vec;
     pub mod sparse_db;
     pub mod write;
 }

@@ -63,6 +63,7 @@ pub fn process_query(
     }
 
     let stamp = Instant::now();
+    db.prefill();
     multiply_reg_by_sparsedb(
         &mut intermediate,
         db,
@@ -80,6 +81,10 @@ pub fn process_query(
         db.current_size() as f64 / 1e6,
         mb_per_sec
     );
+
+    let misses = db.pop_cache_misses();
+    let miss_rate = misses as f64 / db.current_count() as f64;
+    println!("Cache misses: {} ({:.2}%)", misses, miss_rate * 100.0);
 
     let stamp = Instant::now();
     let v_cts: Vec<_> = intermediate
