@@ -345,7 +345,7 @@ mod test {
 
         let inst_trials = params.instances * params.n * params.n;
         let db_row_size = params.poly_len * inst_trials * std::mem::size_of::<u64>();
-        let db = SparseDb::new(None, db_row_size, params.num_items(), None);
+        let db = SparseDb::new(None, None, db_row_size, params.num_items(), None);
         let total_idx_sz = params.instances * params.n * params.n * dim0 * num_per;
         println!("total_idx_sz: {}", total_idx_sz);
         let mut data = vec![0u64; params.poly_len];

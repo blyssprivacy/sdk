@@ -15,9 +15,8 @@ pub unsafe fn bytes_to_u64(bytes: &[u8]) -> &[u64] {
 
 type CacheItem = (Option<usize>, AlignedMemory64);
 
-const CHUNK_SIZE: usize = 256 * 1024; // 256 KiB
 pub struct SparseDb {
-    path: String,
+    paths: Vec<String>,
     item_size: usize,
     // current, sorted set of non-sparse items
     active_item_ids: Arc<RwLock<SortedVec>>,
@@ -29,6 +28,7 @@ pub struct SparseDb {
 }
 impl SparseDb {
     pub fn new(
+        uuid: Option<String>,
         path: Option<String>,
         item_size: usize,
         num_items: usize,
@@ -42,27 +42,55 @@ impl SparseDb {
                 AlignedMemory64::new(item_size / std::mem::size_of::<u64>()),
             )));
         }
+        println!(
+            "Using {} MiB of memory for SparseDb item cache",
+            item_cache.len() * item_size / 1024 / 1024
+        );
 
-        let dbstore = path.unwrap_or_else(|| String::from("/mnt/flashpir/0"));
-        if !std::path::Path::new(&dbstore).exists() {
+        let uuid = uuid.unwrap_or_else(|| String::from("dev"));
+        let dbpath = path.unwrap_or_else(|| String::from("/mnt/flashpir"));
+        let dbroot = std::path::Path::new(&dbpath);
+        if !dbroot.exists() {
             panic!(
                 "DB storage path {} does not exist on the filesystem",
-                dbstore
+                dbroot.to_str().unwrap()
             );
         }
 
-        // at most 8 threads per SSD, and at most PREFETCH_WINDOW threads total
-        let n_ssds = 1;
-        let n_prefetchers = std::cmp::min(8 * n_ssds, prefetch_window);
+        // detect multple storage devices (represented as subdirectories of dbroot, following the form //dbroot/diskN)
+        let mut paths = Vec::new();
+        for entry in std::fs::read_dir(&dbroot).unwrap() {
+            let entry = entry.unwrap();
+            if entry.path().is_dir() {
+                let dir_name = entry.file_name().into_string().unwrap();
+                if dir_name.starts_with("disk") && dir_name[4..].parse::<u32>().is_ok() {
+                    paths.push(entry.path().to_str().unwrap().to_string());
+                }
+            }
+        }
+        if paths.is_empty() {
+            paths.push(dbroot.to_str().unwrap().to_string());
+        }
+
+        // create unique subdirectories for this db instance
+        for i in 0..paths.len() {
+            let new_path = format!("{}/{}", paths[i], uuid);
+            std::fs::create_dir_all(&new_path).unwrap();
+            paths[i] = new_path;
+        }
+
+        println!("Using storage devices: {:?}", paths);
+        assert!(paths.len() > 0);
+
+        // at least 8 threads, at most 4 threads per SSD, and at most PREFETCH_WINDOW threads total
+        let n_ssds = paths.len();
+        let n_prefetchers = std::cmp::max(std::cmp::min(4 * n_ssds, prefetch_window), 8);
 
         Self {
-            // if path is None, use "/tmp/sparsedb"
-            path: dbstore,
+            paths: paths,
             item_size,
-            // active_item_ids: Arc::new(item_ids),
             active_item_ids: Arc::new(RwLock::new(SortedVec::new())),
             item_cache: Arc::new(item_cache),
-            // cache_freelist: Arc::new(RwLock::new(cache_freelist)),
             thread_pool: rayon::ThreadPoolBuilder::new()
                 .num_threads(n_prefetchers)
                 .build()
@@ -71,8 +99,11 @@ impl SparseDb {
         }
     }
 
-    fn idx_2_fpath(&self, id: usize, chunk: usize) -> String {
-        let file_path = format!("{}/{}-{}", self.path, id, chunk);
+    fn id_2_fpath(&self, id: usize) -> String {
+        let device_idx = id % self.paths.len();
+        let path = self.paths[device_idx].clone();
+
+        let file_path = format!("{}/{}", path, id);
         file_path
     }
 
@@ -96,7 +127,7 @@ impl SparseDb {
             }
         }
 
-        let file_path = self.idx_2_fpath(id, 0);
+        let file_path = self.id_2_fpath(id);
         let item_cache_ref = self.item_cache.clone();
         let cache_pos = self.id_2_cache_pos(id);
 
@@ -142,26 +173,41 @@ impl SparseDb {
         }
 
         let cache_pos = self.id_2_cache_pos(id);
-        // try serving from cache
+        // try serving from cache, without waiting for locks
         {
-            let item = self.item_cache[cache_pos].read().unwrap();
-            if item.0.is_some() && item.0.unwrap() == id {
-                return Some(item);
+            if let Ok(item) = self.item_cache[cache_pos].try_read() {
+                if let Some(item_id) = item.0 {
+                    if item_id == id {
+                        return Some(item);
+                    }
+                }
             }
         }
 
-        // if missed, synchronously fill the item into cache
+        // if the correct item was not immediately ready, count as miss
         self.cache_misses
             .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
 
-        let file_path = self.idx_2_fpath(id, 0);
+        // however, a prefetcher may be working on it, and thus holding the corresponding lock.
+        // Wait for the lock to see if our data arrives.
+        {
+            let item = self.item_cache[cache_pos].read().unwrap();
+            if let Some(item_id) = item.0 {
+                if item_id == id {
+                    return Some(item);
+                }
+            }
+        }
+
+        // if the data is still not in cache, we must fill it ourselves
+        let file_path = self.id_2_fpath(id);
         {
             let mut item_guard = self.item_cache[cache_pos].write().unwrap();
             let item = &mut *item_guard;
             SparseDb::_prefetch(file_path, id, item);
         }
 
-        // retry serving the item from cache, up to a limit
+        // after fill, recurse to retry serving the item from cache, up to a limit
         if attempts > 3 {
             panic!("FATAL: item {} exceeded retry limit for fill attempts", id);
         }
@@ -179,24 +225,24 @@ impl SparseDb {
         self._get(id, 0)
     }
 
-    pub fn delete(&self, idx: usize) {
+    pub fn delete(&self, id: usize) {
         // remove from valid set
         {
             let mut active_item_ids = self.active_item_ids.write().unwrap();
-            active_item_ids.remove(idx);
+            active_item_ids.remove(id);
         }
         // (no need to explicitly evict from cache, just let it be overwritten)
 
         // race to delete from filesystem
-        let file_path = self.idx_2_fpath(idx, 0);
+        let file_path = self.id_2_fpath(id);
         std::fs::remove_file(file_path).ok();
     }
 
-    pub fn upsert(&self, idx: usize, data: &[u64]) {
+    pub fn upsert(&self, id: usize, data: &[u64]) {
         // race to write in filesystem
-        // Simultaneous upserts to the same idx are not allowed
+        // Simultaneous upserts to the same item id are not allowed
         // Interspersed reads and writes to SparseDB are not allowed
-        let mut file = File::create(self.idx_2_fpath(idx, 0)).unwrap();
+        let mut file = File::create(self.id_2_fpath(id)).unwrap();
         let byte_slice = unsafe {
             std::slice::from_raw_parts(
                 data.as_ptr() as *const u8,
@@ -211,7 +257,7 @@ impl SparseDb {
         // add to valid set
         {
             let mut active_item_ids = self.active_item_ids.write().unwrap();
-            active_item_ids.insert(idx);
+            active_item_ids.insert(id);
         }
     }
 
@@ -241,7 +287,7 @@ mod tests {
     #[test]
     fn benchmark_sparse_db() {
         let n = 16_000; // number of items
-        let item_size = 256 * 1024; // 256KiB
+        let item_size = 256 * 1024;
         println!(
             "Benchmarking {} MiB SparseDb ({} items @ {} KiB each)",
             n * item_size / 1024 / 1024,
@@ -256,16 +302,16 @@ mod tests {
         }
 
         // Initialize SparseDb
-        const PREFETCH_WINDOW: usize = 128;
-        let db = SparseDb::new(None, item_size, n, Some(PREFETCH_WINDOW));
+        const PREFETCH_WINDOW: usize = 500;
+        let db = SparseDb::new(None, None, item_size, n, Some(PREFETCH_WINDOW));
 
         // let item_ids = (0..n).collect::<Vec<usize>>();
-        let item_ids = sample(&mut rng, n * 4, n).into_vec();
+        let item_ids = sample(&mut rng, (n as f64 * 2.0) as usize, n).into_vec();
         let n_range = *item_ids.iter().max().unwrap_or(&0);
 
         // Insert N items
         let start = Instant::now();
-        item_ids.into_par_iter().with_max_len(8).for_each(|i| {
+        item_ids.into_par_iter().with_max_len(32).for_each(|i| {
             db.upsert(i, &data);
         });
         let duration = start.elapsed();
@@ -288,7 +334,6 @@ mod tests {
         let start = Instant::now();
         db.prefill();
 
-        let mut sum: u64 = 0;
         for i in 0..n_range {
             {
                 let item = db.get_item(i);
@@ -297,12 +342,9 @@ mod tests {
                 }
                 let item = item.unwrap();
                 let b = item.1.as_slice();
-                for value in b.iter() {
-                    sum += *value;
-                }
+                core::hint::black_box(b);
             }
         }
-        core::hint::black_box(sum);
         let duration = start.elapsed();
         let read_bw = (n as f64 * item_size as f64) / (duration.as_secs_f64() * 1e6);
         println!(

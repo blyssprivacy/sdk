@@ -228,7 +228,7 @@ async fn main() -> std::io::Result<()> {
 
     let inst_trials = params.instances * params.n * params.n;
     let db_row_size = params.poly_len * inst_trials * std::mem::size_of::<u64>();
-    let db = SparseDb::new(None, db_row_size, params.num_items(), None);
+    let db = SparseDb::new(None, None, db_row_size, params.num_items(), None);
     let mut rows = Vec::new();
     for _ in 0..params.num_items() {
         rows.push(Vec::new());

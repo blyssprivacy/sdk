@@ -16,6 +16,7 @@ if [[ "$#" -lt 1 ]]; then
 fi
 
 MOUNT_POINT="/mnt/flashpir"
+DISK_PREFIX="disk"
 
 # Helper function to format and mount disks
 perform_operations() {
@@ -23,13 +24,13 @@ perform_operations() {
     for disk in $(lsblk -d -o name,model | grep "$2" | awk '{print "/dev/" $1}' | sort); do
         # Format the disk
         if [ "$1" == "true" ]; then
-            echo "Dry run: Would format ${disk} and mount it at ${MOUNT_POINT}/${index}"
+            echo "Dry run: Would format ${disk} and mount it at ${MOUNT_POINT}/${DISK_PREFIX}${index}"
         else
             echo "Formatting ${disk}..."
             mkfs.ext4 ${disk}
 
             # Create the mount point and mount the disk
-            mount_point="${MOUNT_POINT}/${index}"
+            mount_point="${MOUNT_POINT}/${DISK_PREFIX}${index}"
             mkdir -p ${mount_point}
             echo "Mounting ${disk} at ${mount_point}..."
             mount ${disk} ${mount_point}
