@@ -67,6 +67,9 @@ impl SparseDb {
         // create unique subdirectories for this db instance
         for i in 0..paths.len() {
             let new_path = format!("{}/{}", paths[i], uuid);
+            if std::path::Path::new(&new_path).exists() {
+                std::fs::remove_dir_all(&new_path).unwrap();
+            }
             std::fs::create_dir_all(&new_path).unwrap();
             paths[i] = new_path;
         }
@@ -292,7 +295,7 @@ mod tests {
     #[test]
     fn benchmark_sparse_db() {
         let n = 16_000; // number of items
-        let item_size = 256 * 1024;
+        let item_size = 1024 * 1024;
         println!(
             "Benchmarking {} MiB SparseDb ({} items @ {} KiB each)",
             n * item_size / 1024 / 1024,
