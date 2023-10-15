@@ -113,7 +113,7 @@ pub fn generate_fake_sparse_db_and_get_item<'a>(
 
     let inst_trials = params.instances * params.n * params.n;
     let db_row_size = params.poly_len * inst_trials * std::mem::size_of::<u64>();
-    let mut db = SparseDb::new(None, db_row_size, params.num_items());
+    let mut db = SparseDb::new(None, db_row_size, params.num_items(), None);
 
     let mut rng = thread_rng();
     let mut corr_db_item =

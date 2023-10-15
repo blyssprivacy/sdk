@@ -102,7 +102,7 @@ pub fn multiply_reg_by_sparsedb(
     const PREFETCH_WINDOW: usize = 32;
 
     let stamp = Instant::now();
-    (0..PREFETCH_WINDOW).for_each(|w| {
+    (0..PREFETCH_WINDOW - 1).for_each(|w| {
         sparse_db.prefetch_item(w);
     });
     prefetch_time += stamp.elapsed().as_micros();
@@ -111,7 +111,7 @@ pub fn multiply_reg_by_sparsedb(
         let query_slice = &query[j * 2 * poly_len..(j * 2 + 2) * poly_len];
         for i in 0..num_per {
             let full_idx = j * num_per + i;
-            sparse_db.prefetch_item(full_idx + PREFETCH_WINDOW);
+            sparse_db.prefetch_item(full_idx + PREFETCH_WINDOW - 1);
             {
                 let db_row = sparse_db.get_item(full_idx);
                 if db_row.is_none() {
@@ -125,7 +125,7 @@ pub fn multiply_reg_by_sparsedb(
                     .step_by(num_per)
                     .enumerate()
                     .for_each(|(it, out_slice)| unsafe {
-                        let db_row_u64 = db_row.1.as_ref().unwrap().as_slice();
+                        let db_row_u64 = db_row.1.as_slice();
                         compute_single_out_poly(
                             params,
                             query_slice,
@@ -136,7 +136,6 @@ pub fn multiply_reg_by_sparsedb(
                         );
                     });
             }
-            sparse_db.release_item(full_idx);
         }
         adds += 1;
         if adds >= MAX_SUMMED {
@@ -360,7 +359,7 @@ mod test {
 
         let inst_trials = params.instances * params.n * params.n;
         let db_row_size = params.poly_len * inst_trials * std::mem::size_of::<u64>();
-        let db = SparseDb::new(None, db_row_size, params.num_items());
+        let db = SparseDb::new(None, db_row_size, params.num_items(), None);
         let total_idx_sz = params.instances * params.n * params.n * dim0 * num_per;
         println!("total_idx_sz: {}", total_idx_sz);
         let mut data = vec![0u64; params.poly_len];
