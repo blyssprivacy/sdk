@@ -35,7 +35,7 @@ impl SparseDb {
         uuid: Option<String>,
         path: Option<String>,
         item_size: usize,
-        num_items: usize,
+        _num_items: usize,
         prefetch_window: Option<usize>,
     ) -> Self {
         let uuid = uuid.unwrap_or_else(|| String::from("dev"));

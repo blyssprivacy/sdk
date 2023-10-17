@@ -9,7 +9,6 @@ use std::time::Instant;
 
 use rand::thread_rng;
 use rand::Rng;
-use rand::RngCore;
 use rand::SeedableRng;
 use spiral_rs::arith::*;
 use spiral_rs::params::*;

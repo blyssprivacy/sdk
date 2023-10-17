@@ -1,6 +1,5 @@
 use std::{collections::HashMap, io::Read};
 
-use base64::{engine::general_purpose, Engine};
 use bzip2::{read::BzEncoder, Compression};
 use sha2::{Digest, Sha256};
 use spiral_rs::params::Params;
