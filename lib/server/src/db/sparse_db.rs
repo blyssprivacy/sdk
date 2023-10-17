@@ -159,11 +159,13 @@ impl SparseDb {
     }
 
     pub fn prefill(&self) {
-        // fetch items from the beginning of the active set to fill the prefetch window, except for the first item
+        // Fetch items from the beginning of the active set to fill the prefetch window.
+        // Nonblocking.
         let n = self.item_cache.len();
-        let active_item_ids = self.active_item_ids.read().unwrap();
-        for i in 1..n - 1 {
-            let id = active_item_ids.as_vec()[i];
+        let ids_ref = self.active_item_ids.read().unwrap();
+        let ids = ids_ref.as_vec();
+        for i in 0..std::cmp::min(n, ids.len()) {
+            let id = ids[i];
             self.prefetch_item(id);
         }
     }
@@ -326,7 +328,9 @@ mod tests {
         let db = SparseDb::new(None, None, item_size, n, Some(PREFETCH_WINDOW));
 
         // let item_ids = (0..n).collect::<Vec<usize>>();
-        let item_ids = sample(&mut rng, (n as f64 * 2.0) as usize, n).into_vec();
+        const DB_DENSITY: f64 = 0.5;
+        let item_ids =
+            sample(&mut rng, (n as f64 / 1.0_f64.min(DB_DENSITY)) as usize, n).into_vec();
         let n_range = *item_ids.iter().max().unwrap_or(&0);
 
         // Insert N items
@@ -353,7 +357,6 @@ mod tests {
         // Sequentially read and measure bandwidth
         let start = Instant::now();
         db.prefill();
-
         for i in 0..n_range {
             {
                 let item = db.get_item(i);

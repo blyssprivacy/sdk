@@ -143,6 +143,9 @@ mod test {
     use rand::Rng;
     use spiral_rs::client::*;
     use spiral_rs::util;
+    use std::fs::File;
+    use std::io::Write;
+    use std::os::fd::FromRawFd;
     use std::time::Instant;
 
     use crate::db::loading::*;
@@ -239,7 +242,16 @@ mod test {
         let n_results = inst_trials * num_per;
         let mut intermediate = vec![PolyMatrixNTT::zero(&params, 2, 1); n_results];
 
-        const N_RUNS: usize = 4;
+        let perf_fd: Option<File> = std::env::var("PERF_CTL_FD")
+            .ok()
+            .and_then(|fd| fd.parse().ok())
+            .map(|raw_fd| unsafe { std::fs::File::from_raw_fd(raw_fd) });
+        if let Some(mut perf_fd) = perf_fd.as_ref() {
+            writeln!(perf_fd, "enable").unwrap();
+            println!("Started perf collection.");
+        }
+
+        const N_RUNS: usize = 1;
         let timings: Vec<_> = (0..N_RUNS)
             .map(|_| {
                 let stamp = Instant::now();
@@ -254,6 +266,11 @@ mod test {
                 stamp.elapsed().as_micros()
             })
             .collect();
+
+        if let Some(mut perf_fd) = perf_fd.as_ref() {
+            writeln!(perf_fd, "disable").unwrap();
+            println!("Stopped perf collection.");
+        }
 
         let dbsize = db.current_size() as f64;
         let slowest = *timings.iter().max().unwrap();
