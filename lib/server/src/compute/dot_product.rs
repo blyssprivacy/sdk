@@ -83,9 +83,6 @@ pub fn multiply_reg_by_sparsedb(
     sparse_db: &SparseDb,
     query: &[u64],
     params: &Params,
-    dim0: usize,
-    num_per: usize,
-    inst_trials: usize,
 ) {
     //    db:  (num_per, dim0) -> (inst_trials, poly_len)
     // query:  [dim0, ct_rows, poly_len]
@@ -93,12 +90,19 @@ pub fn multiply_reg_by_sparsedb(
 
     let poly_len = params.poly_len;
     let crt_count = params.crt_count;
+    let dim0 = 1 << params.db_dim_1;
+    let num_per = 1 << params.db_dim_2;
+    let trials = params.n * params.n;
+    let inst_trials = params.instances * trials;
+
     assert_eq!(crt_count, 2);
 
     let mut adds = 0;
     for j in 0..dim0 {
+        // nu_1 = 512
         let query_slice = &query[j * 2 * poly_len..(j * 2 + 2) * poly_len];
         for i in 0..num_per {
+            // nu_2 = 32
             let full_idx = j * num_per + i;
             {
                 let db_row = sparse_db.get_item(full_idx);
@@ -377,15 +381,7 @@ mod test {
         );
 
         let start = Instant::now();
-        multiply_reg_by_sparsedb(
-            &mut out,
-            &db,
-            v_reg_reoriented.as_slice(),
-            &params,
-            dim0,
-            num_per,
-            inst_trials,
-        );
+        multiply_reg_by_sparsedb(&mut out, &db, v_reg_reoriented.as_slice(), &params);
         println!("Mul took {} us", start.elapsed().as_micros())
     }
 }

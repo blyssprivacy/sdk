@@ -16,24 +16,16 @@ use crate::compute::query_expansion::*;
 use crate::db::aligned_memory::*;
 use crate::db::sparse_db::SparseDb;
 
-pub fn process_query(
-    params: &Params,
-    public_params: &PublicParameters,
-    query: &Query,
-    db: &SparseDb,
-) -> Vec<u8> {
-    // println!("Processing query");
-
-    let dim0 = 1 << params.db_dim_1;
-    let num_per = 1 << params.db_dim_2;
-
-    let v_packing = public_params.v_packing.as_ref();
-
+fn prepare_query<'a>(
+    params: &'a Params,
+    public_params: &'a PublicParameters,
+    query: &'a Query,
+    indices: Option<&[usize]>,
+) -> (AlignedMemory64, Vec<PolyMatrixNTT<'a>>) {
     let mut v_reg_reoriented;
     let v_folding;
     if params.expand_queries {
-        (v_reg_reoriented, v_folding) =
-            expand_query(params, public_params, query, Some(&db.get_active_ids()));
+        (v_reg_reoriented, v_folding) = expand_query(params, public_params, query, indices);
     } else {
         v_reg_reoriented = AlignedMemory64::new(query.v_buf.as_ref().unwrap().len());
         v_reg_reoriented
@@ -49,30 +41,29 @@ pub fn process_query(
             .collect();
     }
 
+    (v_reg_reoriented, v_folding)
+}
+
+pub fn process_query(
+    params: &Params,
+    public_params: &PublicParameters,
+    query: &Query,
+    db: &SparseDb,
+) -> Vec<u8> {
+    let v_packing = public_params.v_packing.as_ref();
+    let (v_reg_reoriented, v_folding) =
+        prepare_query(params, public_params, query, Some(&db.get_active_ids()));
     let v_folding_neg = get_v_folding_neg(params, &v_folding);
 
     let trials = params.n * params.n;
-
     let inst_trials = params.instances * trials;
-
+    let num_per = 1 << params.db_dim_2;
     let n_results = inst_trials * num_per;
-
-    let mut intermediate = Vec::with_capacity(n_results);
-    for _ in 0..n_results {
-        intermediate.push(PolyMatrixNTT::zero(params, 2, 1));
-    }
+    let mut intermediate = vec![PolyMatrixNTT::zero(params, 2, 1); n_results];
 
     let stamp = Instant::now();
     db.prefill();
-    multiply_reg_by_sparsedb(
-        &mut intermediate,
-        db,
-        v_reg_reoriented.as_slice(),
-        params,
-        dim0,
-        num_per,
-        inst_trials,
-    );
+    multiply_reg_by_sparsedb(&mut intermediate, db, v_reg_reoriented.as_slice(), params);
     let mul_time = stamp.elapsed().as_micros();
     let mb_per_sec = db.current_size() as f64 / mul_time as f64;
     println!(
@@ -175,7 +166,9 @@ mod test {
         util::params_from_json(&cfg)
     }
 
-    fn full_protocol_is_correct_for_params(params: &Params) {
+    fn setup_full_protocol_test(
+        params: &Params,
+    ) -> (Client, PublicParameters, Query, SparseDb, PolyMatrixRaw) {
         let mut seeded_rng = util::get_seeded_rng();
 
         let target_idx = seeded_rng.gen::<usize>() % (1 << (params.db_dim_1 + params.db_dim_2));
@@ -184,10 +177,9 @@ mod test {
         let mut client = Client::init(&params);
 
         let public_params = client.generate_keys();
-        let pp_sz = public_params.serialize().len();
         let query = client.generate_query(target_idx);
 
-        let mut stamp = Instant::now();
+        let stamp = Instant::now();
         let dummy_items = params.num_items();
         let (corr_db_item, db) =
             generate_fake_sparse_db_and_get_item(params, target_idx, dummy_items);
@@ -197,19 +189,26 @@ mod test {
             stamp.elapsed().as_millis()
         );
 
-        let mut response: Vec<u8> = Vec::new();
-        for _ in 0..3 {
-            stamp = Instant::now();
-            response = process_query(params, &public_params, &query, &db);
-            println!(
-                "pub params: {} bytes ({} actual)",
-                params.setup_bytes(),
-                pp_sz
-            );
-            println!("processing took {} us", stamp.elapsed().as_micros());
-            println!("response: {} bytes", response.len());
-        }
+        return (client, public_params, query, db, corr_db_item);
+    }
 
+    fn full_protocol_is_correct_for_params(params: &Params) {
+        let (client, public_params, query, db, corr_db_item) = setup_full_protocol_test(params);
+
+        let mut response: Vec<u8> = Vec::new();
+
+        let stamp = Instant::now();
+        response = process_query(params, &public_params, &query, &db);
+        println!("processing took {} us", stamp.elapsed().as_micros());
+
+        println!(
+            "pub params: {} bytes ({} actual) \nresponse: {} bytes",
+            params.setup_bytes(),
+            public_params.serialize().len(),
+            response.len()
+        );
+
+        // decode and verify
         let result = client.decode_response(response.as_slice());
 
         let p_bits = log2_ceil(params.pt_modulus) as usize;
@@ -225,5 +224,46 @@ mod test {
     #[test]
     fn full_protocol_is_correct() {
         full_protocol_is_correct_for_params(&get_params());
+    }
+
+    #[test]
+    fn bench_mul() {
+        let params = get_params();
+        let (_, public_params, query, db, _) = setup_full_protocol_test(&params);
+        let (v_reg_reoriented, _) =
+            prepare_query(&params, &public_params, &query, Some(&db.get_active_ids()));
+
+        let trials = params.n * params.n;
+        let inst_trials = params.instances * trials;
+        let num_per = 1 << params.db_dim_2;
+        let n_results = inst_trials * num_per;
+        let mut intermediate = vec![PolyMatrixNTT::zero(&params, 2, 1); n_results];
+
+        const N_RUNS: usize = 4;
+        let timings: Vec<_> = (0..N_RUNS)
+            .map(|_| {
+                let stamp = Instant::now();
+                db.prefill();
+                multiply_reg_by_sparsedb(
+                    &mut intermediate,
+                    &db,
+                    v_reg_reoriented.as_slice(),
+                    &params,
+                );
+                core::hint::black_box(&intermediate);
+                stamp.elapsed().as_micros()
+            })
+            .collect();
+
+        let dbsize = db.current_size() as f64;
+        let slowest = *timings.iter().max().unwrap();
+        let avg = timings.iter().sum::<u128>() / N_RUNS as u128;
+
+        println!(
+            "slowest: {} us ({} MB/s)",
+            slowest,
+            (dbsize / slowest as f64) as u64
+        );
+        println!("avg: {} us, ({} MB/s)", avg, (dbsize / avg as f64) as u64);
     }
 }

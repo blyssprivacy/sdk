@@ -1,5 +1,6 @@
 use std::fs::File;
 use std::io::{Read, Write};
+use std::os::unix::prelude::PermissionsExt;
 use std::sync::RwLockReadGuard;
 use std::sync::{Arc, RwLock};
 
@@ -47,32 +48,43 @@ impl SparseDb {
             );
         }
 
-        // setup backing stores for SparseDb at dbroot
         // subdirs of the form //dbroot/diskN will be treated as independent storage devices;
         // SparseDb will distribute reads & writes in round-robin order over devices
-        let mut paths = Vec::new();
-        for entry in std::fs::read_dir(&dbroot).unwrap() {
-            let entry = entry.unwrap();
-            if entry.path().is_dir() {
-                let dir_name = entry.file_name().into_string().unwrap();
-                if dir_name.starts_with("disk") && dir_name[4..].parse::<u32>().is_ok() {
-                    paths.push(entry.path().to_str().unwrap().to_string());
+        let mut storage_paths: Vec<_> = std::fs::read_dir(dbroot)
+            .unwrap()
+            .filter_map(|res| {
+                let path = res.unwrap().path();
+                if path.is_dir() {
+                    let dir_name = path.file_name().unwrap().to_str().unwrap();
+                    if dir_name.starts_with("disk") && dir_name[4..].parse::<u32>().is_ok() {
+                        Some(path)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
                 }
-            }
-        }
-        if paths.is_empty() {
-            paths.push(dbroot.to_str().unwrap().to_string());
+            })
+            .collect();
+        storage_paths.sort();
+
+        // if no subdirs are found, use dbroot directly as the only storage device
+        if storage_paths.is_empty() {
+            storage_paths.push(dbroot.to_path_buf());
         }
 
         // create unique subdirectories for this db instance
-        for i in 0..paths.len() {
-            let new_path = format!("{}/{}", paths[i], uuid);
-            if std::path::Path::new(&new_path).exists() {
-                std::fs::remove_dir_all(&new_path).unwrap();
-            }
+        for storage_path in &mut storage_paths {
+            let new_path = storage_path.join(&uuid);
             std::fs::create_dir_all(&new_path).unwrap();
-            paths[i] = new_path;
+            std::fs::set_permissions(&new_path, std::fs::Permissions::from_mode(0o777)).unwrap();
+            *storage_path = new_path;
         }
+
+        let paths: Vec<String> = storage_paths
+            .iter()
+            .map(|p| p.to_str().unwrap().to_string())
+            .collect();
 
         println!("Using storage devices: {:?}", paths);
         assert!(paths.len() > 0);
