@@ -282,5 +282,9 @@ mod test {
             (dbsize / slowest as f64) as u64
         );
         println!("avg: {} us, ({} MB/s)", avg, (dbsize / avg as f64) as u64);
+
+        let misses = db.pop_cache_misses();
+        let miss_rate = misses as f64 / db.current_count() as f64;
+        println!("Cache misses: {} ({:.2}%)", misses, miss_rate * 100.0);
     }
 }

@@ -63,7 +63,7 @@ cargo test --profile release-with-debug -- bench_mul --nocapture
 ```
 sudo sysctl kernel.perf_event_paranoid=-1
 sudo sh -c " echo 0 > /proc/sys/kernel/kptr_restrict"
-mkfifo perf_ctl.fifo
+rm perf_ctl.fifo && mkfifo perf_ctl.fifo
 exec {perf_ctl_fd}<>perf_ctl.fifo
 echo $perf_ctl_fd
 
@@ -72,12 +72,9 @@ PERF_CTL_FD=$perf_ctl_fd perf record --delay=-1 --control fd:${perf_ctl_fd} -- c
 PERF_CTL_FD=$perf_ctl_fd perf stat --delay=-1 --control fd:${perf_ctl_fd} \
     -e task-clock,context-switches,cycles,instructions \
     -e cache-references,cache-misses \
-    -e L1-dcache-load-misses,L1-dcache-loads \
     -e dTLB-load-misses,dTLB-loads \
     -e branch-load-misses,branch-loads \
     -e sse_avx_ops_retired.all \
-    -e ls_tlb_flush.all \
-    -e l2_pf_miss_l2_hit_l3.all \
     -- cargo test --profile release-with-debug -- bench_mul
 ```
 

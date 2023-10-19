@@ -89,9 +89,10 @@ impl SparseDb {
         println!("Using storage devices: {:?}", paths);
         assert!(paths.len() > 0);
         let n_ssds = paths.len();
+        let n_cores = rayon::current_num_threads();
 
         // setup read scratchpad ("cache")
-        let prefetch_window = prefetch_window.unwrap_or(32);
+        let prefetch_window = prefetch_window.unwrap_or(32 * n_cores);
         let mut item_cache = Vec::with_capacity(prefetch_window);
         for _ in 0..prefetch_window {
             item_cache.push(CachePadded::new(RwLock::new(CacheItem {
@@ -304,7 +305,7 @@ mod tests {
     use rayon::prelude::{IndexedParallelIterator, IntoParallelIterator, ParallelIterator};
 
     use super::*;
-    use std::time::Instant;
+    use std::{os::fd::FromRawFd, time::Instant};
 
     #[test]
     fn benchmark_sparse_db() {
@@ -354,6 +355,16 @@ mod tests {
             .output()
             .unwrap();
 
+        // perf collection start
+        let perf_fd: Option<File> = std::env::var("PERF_CTL_FD")
+            .ok()
+            .and_then(|fd| fd.parse().ok())
+            .map(|raw_fd| unsafe { std::fs::File::from_raw_fd(raw_fd) });
+        if let Some(mut perf_fd) = perf_fd.as_ref() {
+            writeln!(perf_fd, "enable").unwrap();
+            println!("Started perf collection.");
+        }
+
         // Sequentially read and measure bandwidth
         let start = Instant::now();
         db.prefill();
@@ -369,6 +380,13 @@ mod tests {
             }
         }
         let duration = start.elapsed();
+
+        // perf collection stop
+        if let Some(mut perf_fd) = perf_fd.as_ref() {
+            writeln!(perf_fd, "disable").unwrap();
+            println!("Stopped perf collection.");
+        }
+
         let read_bw = (n as f64 * item_size as f64) / (duration.as_secs_f64() * 1e6);
         println!(
             "Read: {} MiB/s ({} ms)",
