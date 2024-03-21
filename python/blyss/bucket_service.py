@@ -1,7 +1,7 @@
 from typing import Any, Optional, Union
 from . import bucket, api, seed
 
-BLYSS_BUCKET_URL = "https://beta.api.blyss.dev"
+BLYSS_BUCKET_URL = "https://alpha.api.blyss.dev"
 DEFAULT_BUCKET_PARAMETERS = {
     "maxItemSize": 1000,
     "keyStoragePolicy": "none",
