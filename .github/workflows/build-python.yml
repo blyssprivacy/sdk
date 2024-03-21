@@ -58,9 +58,8 @@ jobs:
           name: wheels
           path: python/dist
 
-      # only run docs on target x86_64
       - name: Build Python docs
-        if: matrix.target == 'x86_64'
+        if: matrix.target == 'x86_64' # avoids redudundant builds; pdoc isn't arch-specific
         working-directory: python
         shell: bash
         # TODO: pdoc is documenting the installed module, not the source folder.

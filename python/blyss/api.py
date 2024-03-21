@@ -183,7 +183,7 @@ class API:
         """
         try:
             await _async_get(
-                self.api_key, self._service_url_for("/" + bucket_name + CHECK_PATH)
+                self.api_key, self._service_url_for("/" + bucket_name + META_PATH)
             )
             return True
         except ApiException as e:
